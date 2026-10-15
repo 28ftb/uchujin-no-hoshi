@@ -24,6 +24,15 @@
 - EOS を使うには PlayEveryWare の *EOS Plugin for Unity* を導入し、Scripting Define Symbols に `UCHUJIN_EOS` を追加。
   手順は `Assets/_Project/Scripts/Network/README.md`。EOS の API 呼び出しは SDK 無しで書いたため **Unity 上での確認が必須** です。
 
+## Windows ビルドとゲームランチャーへの公開
+- ビルドすると `Builds/Windows/UchujinNoHoshi.exe` ができ、成功したときだけ友達のゲームランチャーへ自動で公開されます（ゲームID `uchujin-no-hoshi`、表示名「宇宙人の星」）。
+  - Editor から：メニュー **「宇宙人の星 → Windows ビルド（ランチャーへ公開）」**。公開は Unity を閉じた後に裏で始まります。
+  - バッチ：`powershell -NoProfile -ExecutionPolicy Bypass -File Tools\Build-Windows.ps1`（Editor を閉じて実行。公開の完了まで待ち、`GAMEHUB PUBLISH: PASS` を出す）。
+- 検証用のビルドは環境変数 `GAMEHUB_SKIP_PUBLISH=1` を付ける（公開しない）。正本の checkout の `Builds/Windows` 以外（worktree・別の出力先）は公開しません。
+- 公開キットは `C:\GameHubPublisher`（登録は `outputs\GameHub\sources.json`、結果は `work\publish-after-build-uchujin-no-hoshi.json` / `.log`）。
+- ビルド設定は `Assets/_Project/Scripts/Editor/BuildTools.cs`、公開の呼び出しは同じフォルダの `GameHubPublish.cs`。
+  コードで作るマテリアルのシェーダー（Standard など）は、ビルド時に Always Included Shaders へ自動で追加します。
+
 ## 操作（既定）
 | 操作 | キー |
 |---|---|
