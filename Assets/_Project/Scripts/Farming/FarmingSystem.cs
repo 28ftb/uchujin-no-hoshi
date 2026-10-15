@@ -103,7 +103,7 @@ namespace Uchujin.Farming
 
         public override void OnNewPlanet(PlanetContext ctx)
         {
-            if (ctx.Planet.planetIndex <= 1 && string.IsNullOrEmpty(ctx.Planet.previousWorldId)) ResetProfile();
+            if (ctx.ResetSkills) ResetProfile();
             // 最初から少しだけ耕してある（プロローグ後すぐ遊べるように）
             var b = UnlockedBounds();
             for (int x = b.xMin + 1; x < b.xMin + 4 && x < b.xMax; x++)

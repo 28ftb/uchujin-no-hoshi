@@ -816,10 +816,14 @@ namespace Uchujin.Rocket
                     string name = !string.IsNullOrEmpty(c.Nickname) ? c.Nickname : svc.GetSpeciesName(c.SpeciesId);
                     string abil = RocketTables.AbilityLabel(a);
                     opts.Add(new ChoiceOption(Loc.Format("{0}（{1} Lv{2}）", "{0} ({1} Lv{2})", name, abil, c.AbilityLevel(a)), () =>
+                    {
+                        // ゲストが持ち歩いている子は、先に個体データごとホストの星へ預ける（ホストはその子のデータを持たないため）
+                        if (!DepositCarriedCreatureIfGuest(svc, uid, def.Id)) return;
                         WorldAuthority.Submit(new RocketAssignCreatureCommand { deviceId = def.Id, creatureUid = uid, asHelper = !required }, r =>
                         {
                             if (r != null && r.Success) UIManager.Toast(Loc.Format("{0}が作業場で手伝い始めた", "{0} started helping at the workshop", name));
-                        })));
+                        });
+                    }));
                 }
             }
             if (!string.IsNullOrEmpty(current))
@@ -1075,6 +1079,21 @@ namespace Uchujin.Rocket
             return CommandResult.Ok(Loc.Format("作業費 {0} を支払った", "Paid {0} for labor", Wallet.Format(amount)), null);
         }
 
+        /// <summary>
+        /// ゲスト：持ち歩いている（同行・ケージの）個体は、配置コマンドを送る前に ICreatureService.SetPlacement で
+        /// ホストへ預ける（Creatures が個体データ付きの PlaceCreatureCommand を送る。コマンドは順序どおりホストで実行されるので、
+        /// 続く RocketAssignCreatureCommand の時にはホストがその子を知っている）。預けられなかったら false。
+        /// ソロ・ホストではコマンド処理の SetPlacementFor がその場で置くので何もしない。
+        /// </summary>
+        internal static bool DepositCarriedCreatureIfGuest(ICreatureService svc, string uid, string deviceId)
+        {
+            if (!WorldAuthority.IsGuest || svc == null || string.IsNullOrEmpty(uid)) return true;
+            var v = svc.Get(uid);
+            if (v == null) return false;
+            if (v.Placement != CreaturePlacement.Companion && v.Placement != CreaturePlacement.Storage) return true; // もう星にいる
+            return svc.SetPlacement(uid, CreaturePlacement.RocketWorkshop, deviceId);
+        }
+
         private CommandResult HandleAssignCreature(RocketAssignCreatureCommand cmd, CommandContext ctx)
         {
             if (!ctx.HasPermission(PermissionLevel.Helper)) return CommandResult.Fail("この星では修理を手伝う権限がありません", "You don't have permission to help with repairs here");
@@ -1093,7 +1112,12 @@ namespace Uchujin.Rocket
                 if (cur != null && cur.OwnerId != ctx.IssuerId && ctx.Permission < PermissionLevel.Owner)
                     return CommandResult.Fail("他の人の生物です", "That creature belongs to someone else");
                 // この装置に置かれている時だけ手元へ戻す（別の装置へ移した個体はそのまま）
-                if (cur != null && cur.Placement == CreaturePlacement.RocketWorkshop && cur.PlacementTargetId == def.Id) svc.SetPlacement(current, CreaturePlacement.Companion, null);
+                if (cur != null && cur.Placement == CreaturePlacement.RocketWorkshop && cur.PlacementTargetId == def.Id)
+                {
+                    // 飼い主本人なら連れて帰る（ゲストへは Creatures が個体データを返す）。家主が他人の子を外す時は、家で待ってもらう
+                    if (cur.OwnerId == ctx.IssuerId) svc.SetPlacementFor(ctx.IssuerId, current, CreaturePlacement.Companion, null);
+                    else svc.SetPlacementFor(ctx.IssuerId, current, CreaturePlacement.Home, null);
+                }
                 if (cmd.asHelper) ds.helperUid = null;
                 else ds.creatureUid = null;
                 Changed();
@@ -1112,9 +1136,9 @@ namespace Uchujin.Rocket
                 var prev = svc.Get(current);
                 bool prevStillHere = prev != null && prev.Placement == CreaturePlacement.RocketWorkshop && prev.PlacementTargetId == def.Id;
                 if (prevStillHere && prev.OwnerId != ctx.IssuerId) return CommandResult.Fail("別の人の生物が手伝っています", "Another player's creature is already helping");
-                if (prevStillHere) svc.SetPlacement(current, CreaturePlacement.Companion, null);
+                if (prevStillHere) svc.SetPlacementFor(ctx.IssuerId, current, CreaturePlacement.Companion, null);
             }
-            if (!svc.SetPlacement(cmd.creatureUid, CreaturePlacement.RocketWorkshop, def.Id)) return CommandResult.Fail("生物を配置できませんでした", "Could not place the creature");
+            if (!svc.SetPlacementFor(ctx.IssuerId, cmd.creatureUid, CreaturePlacement.RocketWorkshop, def.Id)) return CommandResult.Fail("生物を配置できませんでした", "Could not place the creature");
             Remember(ctx);
             if (cmd.asHelper) ds.helperUid = cmd.creatureUid;
             else ds.creatureUid = cmd.creatureUid;

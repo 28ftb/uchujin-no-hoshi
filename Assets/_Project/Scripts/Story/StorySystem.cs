@@ -659,6 +659,8 @@ namespace Uchujin.Story
                 SkipPrologue = !plan.shortPrologue,
                 // 持ち物の取捨は OnNewPlanet で CarryOverPlan に従って行う（コアの KeepProfile は全部か無しかのため）
                 KeepProfile = true,
+                KeepSkills = plan.keepSkills,
+                KeepCompanions = plan.keepCompanions,
                 PlanetIndex = (planet != null ? planet.planetIndex : 1) + 1,
                 PreviousWorldId = planet != null ? planet.worldId : null
             });

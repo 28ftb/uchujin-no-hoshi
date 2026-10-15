@@ -364,5 +364,80 @@ namespace Uchujin.Residents
         public List<PlayerReputation> reputation = new List<PlayerReputation>();
         public int lastSimDay = -1;
         public int lastWeatherForecastDay = -1;
+        /// <summary>接続していないプレイヤーへ後で届ける記録（手紙・観察）。参加した時にホストが届ける。</summary>
+        public List<PendingPlayerRecord> pendingRecords = new List<PendingPlayerRecord>();
+    }
+
+    /// <summary>その時に接続していなかったプレイヤーへ、次に参加した時に届ける記録。</summary>
+    [Serializable]
+    public class PendingPlayerRecord
+    {
+        public string playerId;
+        /// <summary>"letter"（引っ越した住民からの手紙）／"observation"（住民辞典の観察記録）。</summary>
+        public string kind;
+        public string residentId;
+        public int day;
+        public int minuteOfDay;
+        public string factJa;
+        public string factEn;
+    }
+
+    // =====================================================================
+    // 同期専用の軽い状態（副キー "residents.live"）。セーブ・参加時のスナップショットには含めない。
+    // 位置・向き・行動・表示・表情など見た目に必要な最小限だけを、ホストが約0.5秒ごとに送る。
+    // フィールド名は通信量を減らすため短くしている。
+    // =====================================================================
+
+    [Serializable]
+    public class ResidentLiveEntry
+    {
+        public string id;
+        /// <summary>位置と向き。</summary>
+        public float x, y, z, r;
+        /// <summary>歩いている時の次の経由点（ゲストの補間の先読み）。</summary>
+        public float tx, tz;
+        /// <summary>行動（ResidentActivity）。</summary>
+        public int a;
+        /// <summary>基本の表情（Expression）。</summary>
+        public int f;
+        /// <summary>ビットフラグ（ResidentLiveFlags）。</summary>
+        public int fl;
+        /// <summary>立ち話の相手。</summary>
+        public string c;
+        /// <summary>手に持っている物。</summary>
+        public string h;
+        /// <summary>家の中の代理の姿がいるエリア（ホストで代理を表示中の時だけ。空なら外）。</summary>
+        public string ar;
+    }
+
+    public static class ResidentLiveFlags
+    {
+        public const int Hidden = 1;
+        public const int Carrying = 2;
+        public const int Moving = 4;
+        public const int CutsceneHold = 8;
+        public const int GoTo = 16;
+    }
+
+    /// <summary>ホストで住民の AI が見せた表情・身振り（発話を伴わないもの）。ゲストでも再生する。</summary>
+    [Serializable]
+    public class ResidentCueEntry
+    {
+        public int s;
+        public string id;
+        /// <summary>0 = 表情、1 = 身振り。</summary>
+        public int k;
+        /// <summary>Expression または Gesture の値。</summary>
+        public int v;
+        public string t;
+        public int n;
+        public float d;
+    }
+
+    [Serializable]
+    public class ResidentsLiveData
+    {
+        public List<ResidentLiveEntry> e = new List<ResidentLiveEntry>();
+        public List<ResidentCueEntry> q = new List<ResidentCueEntry>();
     }
 }

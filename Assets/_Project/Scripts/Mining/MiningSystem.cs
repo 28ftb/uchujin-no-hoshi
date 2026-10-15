@@ -170,7 +170,7 @@ namespace Uchujin.Mining
 
         public override void OnNewPlanet(PlanetContext ctx)
         {
-            if (ctx.Planet.planetIndex <= 1 && string.IsNullOrEmpty(ctx.Planet.previousWorldId) && LocalPlayer != null)
+            if (ctx.ResetSkills && LocalPlayer != null)
                 profiles[LocalPlayer.PlayerId] = new MiningProfileData { playerId = LocalPlayer.PlayerId };
             Regenerate(Clock != null ? Clock.Day : 1, false);
         }

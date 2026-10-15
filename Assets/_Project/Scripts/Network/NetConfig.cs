@@ -9,7 +9,7 @@ namespace Uchujin.Network
     public static class NetConfig
     {
         /// <summary>通信プロトコルの版。互換性の無い変更をしたら上げる（参加時に照合）。</summary>
-        public const int ProtocolVersion = 1;
+        public const int ProtocolVersion = 2; // 2：一時メッセージ（Transient）を追加、発話の中継を状態から外した
 
         /// <summary>最大人数（ホストを含む）。マルチ §2.1：初期は4人を仮の既定とし、確定上限とはしない。</summary>
         public const int MaxPlayers = 4;
@@ -42,6 +42,10 @@ namespace Uchujin.Network
         public const float MaxExtrapolation = 0.25f;
         /// <summary>これ以上離れたら補間せず瞬間移動（エリア移動など）。</summary>
         public const float TeleportDistance = 12f;
+
+        // ---- 一時メッセージ ----
+        /// <summary>ゲストの読み込み中に届いた一時メッセージを溜めておく上限（超えたら古い物から捨てる）【仮】。</summary>
+        public const int MaxBufferedTransients = 256;
 
         // ---- ゲストの持ち物 ----
         /// <summary>ゲストの持ち物・所持金の要約をホストへ送る間隔（変化があった時だけ）。</summary>

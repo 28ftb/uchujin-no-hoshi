@@ -433,7 +433,10 @@ namespace Uchujin.Housing
             {
                 var proxyPos = origin + new Vector3(W * 0.5f, 0f, D * 0.6f);
                 residentHomeProxy = ResidentProxy.Create(residentInteriorRoot, proxyPos, r, r.Id, this);
+                residentHomeExit = origin + new Vector3(W * 0.5f, 0f, 0.5f);
                 WorldLabels.Add(residentHomeProxy.transform, () => ResidentName(r.Id), new Vector3(0, 1.5f, 0), UIStyles.AlienText, 14f, true);
+                // 在宅中は、この姿を住民本体の代わりにする（[E] で会話・身振りの対象・吹き出し）。この端末の表示だけの登録
+                RegisterIndoorProxy(residentHomeProxy, AreaIds.ResidentHouse(r.Id), ResidentHomeProxyUntil());
                 residentProxyTimer = 1.5f;
                 var u = new Utterance(r.Id, "housing.home_welcome")
                     .Say(MeaningFrame.Make(SpeechAct.Greeting, Concepts.WELCOME))
@@ -446,6 +449,51 @@ namespace Uchujin.Housing
         }
 
         private Utterance residentWelcome;
+        private Vector3 residentHomeExit;
+
+        /// <summary>住民の家の代理の有効期限（1時間ごとに延ばす。日をまたがない）。</summary>
+        private int residentHomeProxyUntil;
+
+        private int ResidentHomeProxyUntil()
+        {
+            int now = Clock != null ? Clock.MinuteOfDay : 0;
+            residentHomeProxyUntil = Mathf.Min(TimeSystem.MinutesPerDay - 1, now + 60);
+            return residentHomeProxyUntil;
+        }
+
+        /// <summary>はっきり外出している行動（家の中の姿は出かけていく）。</summary>
+        private static bool IsOutActivity(ResidentActivity a)
+        {
+            switch (a)
+            {
+                case ResidentActivity.Working:
+                case ResidentActivity.Shopping:
+                case ResidentActivity.Fishing:
+                case ResidentActivity.Farming:
+                case ResidentActivity.Exploring:
+                case ResidentActivity.Visiting:
+                case ResidentActivity.AtPlaza:
+                case ResidentActivity.Celebrating:
+                case ResidentActivity.CatchingCreatures:
+                case ResidentActivity.Mining:
+                case ResidentActivity.WatchingSky:
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>住民の家の住人が出かける：代理を外し、出口へ歩いて消える。</summary>
+        private void ResidentHomeProxyLeaves()
+        {
+            var proxy = residentHomeProxy;
+            residentHomeProxy = null;
+            if (proxy == null) return;
+            ReleaseIndoorProxy(proxy);
+            proxy.Leaving = true;
+            proxy.PlayGesture(Gesture.Wave);
+            proxy.OnArrive = p => { if (p != null) UnityEngine.Object.Destroy(p.gameObject); };
+            proxy.GoTo(new List<Vector3> { residentHomeExit }, 180f, "idle", null);
+        }
 
         private static bool TryPlaceTemp(HousingPlanetState temp, ItemDefinition def, FurnitureSpec spec, int rot, SeededRandom rng, out PlacedFurniture pf)
         {
@@ -468,6 +516,7 @@ namespace Uchujin.Housing
 
         private void DestroyResidentInterior()
         {
+            ReleaseIndoorProxy(residentHomeProxy);
             if (residentInteriorRoot != null) UnityEngine.Object.Destroy(residentInteriorRoot.gameObject);
             residentInteriorRoot = null;
             residentInteriorResident = null;
@@ -506,8 +555,20 @@ namespace Uchujin.Housing
             residentProxyTimer -= dt;
             if (residentProxyTimer > 0f || !residentHomeProxy.Arrived) return;
             residentProxyTimer = UnityEngine.Random.Range(8f, 16f);
-            if (residentInteriorFurniture.Count == 0) return;
             var r = Game.Service<IResidentDirectory>()?.Get(residentHomeProxy.ResidentId);
+            // 出かける時間になった（仕事・広場・訪問など）：家の中の姿は出口から出ていき、本体の表示に戻る
+            if (r == null || !r.IsActive || IsOutActivity(r.Activity))
+            {
+                ResidentHomeProxyLeaves();
+                return;
+            }
+            // 代理の期限を延ばす（在宅のあいだ）
+            int nowMinute = Clock != null ? Clock.MinuteOfDay : 0;
+            bool nearEnd = nowMinute >= residentHomeProxyUntil - 15 && residentHomeProxyUntil < TimeSystem.MinutesPerDay - 1;
+            bool wrapped = nowMinute < residentHomeProxyUntil - 75; // 0:00 をまたいだ
+            if (residentHomeProxy.IndoorRegistered && (nearEnd || wrapped))
+                RegisterIndoorProxy(residentHomeProxy, AreaIds.ResidentHouse(residentHomeProxy.ResidentId), ResidentHomeProxyUntil());
+            if (residentInteriorFurniture.Count == 0) return;
             bool night = Clock != null && Clock.IsNight;
             FurnitureObject pick = null;
             float best = float.MinValue;

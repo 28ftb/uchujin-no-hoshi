@@ -139,7 +139,7 @@ namespace Uchujin.Housing
                     GUILayout.BeginHorizontal();
                     GUILayout.Label((suits ? "♥ " : "") + name, UIStyles.Label);
                     if (GUILayout.Button(Loc.T("ここに住まわせる", "Live here"), UIStyles.ButtonSmall, GUILayout.Width(200)))
-                        WorldAuthority.Submit(new AssignCreatureCommand { creatureUid = cv.Uid, instanceId = f.instanceId, mode = "habitat" });
+                        HousingSystem.SubmitAssignCreature(cv.Uid, "habitat", f.instanceId);
                     GUILayout.EndHorizontal();
                 }
             GUILayout.EndScrollView();
@@ -662,9 +662,9 @@ namespace Uchujin.Housing
                     GUILayout.BeginHorizontal(UIStyles.Box);
                     GUILayout.Label(name + "　" + where, UIStyles.Label);
                     if (cv.Placement != CreaturePlacement.Home && cv.Placement != CreaturePlacement.Deposited && GUILayout.Button(Loc.T("家の庭で暮らす", "Live in the garden"), UIStyles.ButtonSmall, GUILayout.Width(180)))
-                        WorldAuthority.Submit(new AssignCreatureCommand { creatureUid = cv.Uid, mode = "home" });
+                        HousingSystem.SubmitAssignCreature(cv.Uid, "home", null);
                     if ((cv.Placement == CreaturePlacement.Home || cv.Placement == CreaturePlacement.Habitat) && GUILayout.Button(Loc.T("連れて行く", "Take along"), UIStyles.ButtonSmall, GUILayout.Width(140)))
-                        WorldAuthority.Submit(new AssignCreatureCommand { creatureUid = cv.Uid, mode = "companion" });
+                        HousingSystem.SubmitAssignCreature(cv.Uid, "companion", null);
                     GUILayout.EndHorizontal();
                 }
             GUILayout.Label(Loc.T("住処の家具を Shift+E で調べると、生き物を住まわせられる。", "Inspect a habitat with Shift+E to house a creature there."), UIStyles.LabelDim);

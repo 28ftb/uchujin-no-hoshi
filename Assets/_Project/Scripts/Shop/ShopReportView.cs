@@ -671,7 +671,8 @@ namespace Uchujin.Shop
         }
 
         /// <summary>来店の事実を資料（SalesRecord）にする。訳や理由の断定は書かない。</summary>
-        private TabletMaterial BuildMaterial(VisitRecordData v)
+        /// <summary>来店1回分の事実を資料（SalesRecord）にする。ID は来店ごとに一定（"shop.visit.&lt;id&gt;"）なので二重に入らない。</summary>
+        internal static TabletMaterial BuildMaterial(VisitRecordData v)
         {
             var prev = Loc.Current;
             Loc.Current = UILanguage.Japanese;

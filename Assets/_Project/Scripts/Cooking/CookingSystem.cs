@@ -100,8 +100,8 @@ namespace Uchujin.Cooking
             planet = new CookingPlanetData();
             knowledge.Clear();
             var local = Game?.LocalPlayerId;
-            // 最初の星から始める新しいゲームなら、持ち歩きの記録（習熟・食の記録・持ち越しレシピ）も新しくする
-            bool freshGame = ctx.Planet != null && ctx.Planet.planetIndex <= 1 && string.IsNullOrEmpty(ctx.Planet.previousWorldId);
+            // 新規ゲーム、または次の星へ「技能を引き継がない」を選んだ時は、持ち歩きの記録（習熟・食の記録・持ち越しレシピ）も新しくする
+            bool freshGame = ctx.ResetSkills;
             if (freshGame && local != null) profiles[local] = new CookingProfileData();
         }
 
@@ -692,13 +692,15 @@ namespace Uchujin.Cooking
             var fac = layout != null ? layout.GetFacilityById(CommunityKitchenId) : null;
             if (fac != null)
             {
-                // 施設の建物は World が作るので、調理台は入口の前（屋外）に置く
+                // World が作る東屋（奥に壁、手前が開いている）の中、奥の壁際に調理台を置く。
+                // 調理台の正面（ローカル +z）を入口側へ向け、プレイヤーは東屋の中から使う。
                 var dir = fac.entrance - fac.position;
                 dir.y = 0f;
-                if (dir.sqrMagnitude < 0.01f) dir = Vector3.forward;
+                if (dir.sqrMagnitude < 0.01f) dir = Quaternion.Euler(0f, fac.rotationY, 0f) * Vector3.forward;
                 dir.Normalize();
-                pos = fac.entrance + dir * 2.2f;
-                yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg + 180f;
+                float depth = fac.size.z > 0.1f ? fac.size.z : 7f;
+                pos = fac.position - dir * (depth * 0.5f - 2.2f);
+                yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
             }
             if (layout != null) pos = layout.OnGround(pos);
             communityView = CommunityKitchenView.Build(this, Game.SceneRoot, pos, yaw, CommunityKitchenId);

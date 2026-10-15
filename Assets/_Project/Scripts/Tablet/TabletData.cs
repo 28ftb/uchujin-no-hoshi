@@ -271,7 +271,39 @@ namespace Uchujin.Tablet
         public List<PhotoInfo> photos = new List<PhotoInfo>();
         /// <summary>自分が再生して聞いたマネピの伝言（新着表示用）。</summary>
         public List<string> heardMessageIds = new List<string>();
+        /// <summary>
+        /// 資料・住民辞典の観察に結び付いた発話の原本の写し（AddMaterialFor で届いたもの等）。
+        /// 言語モジュールの会話ログ（ISpeechService.GetRecord）から消えても、音声カード化・辞書の証拠に使えるよう自前で持つ。
+        /// </summary>
+        public List<UtteranceRecord> receivedRecords = new List<UtteranceRecord>();
         public int nextResidentNumber = 1;
+    }
+
+    /// <summary>
+    /// 個人への記録の一時メッセージ（チャンネル <see cref="TabletSystem.RecordChannel"/>。保存しない）。
+    /// ホストで起きた事実（商店の委託品の売上・依頼の達成・贈り物など）を、ゲスト本人のタブレットへ届ける。
+    /// JsonUtility は null の入れ子クラスも既定値で書き出すため、有無は has* で表す。
+    /// </summary>
+    [Serializable]
+    public class TabletRecordMessage
+    {
+        public bool hasMaterial;
+        public TabletMaterial material;
+        /// <summary>資料・観察に結び付いた発話の原本（受信側の会話ログに無いことが多いので一緒に送る）。</summary>
+        public bool hasRecord;
+        public UtteranceRecord record;
+        /// <summary>住民辞典の観察（観察できた事実だけ）。</summary>
+        public bool hasObservation;
+        /// <summary>観察の種類（"observed" "purchase" "gift" "quest" など）。</summary>
+        public string observationKind;
+        public string residentId;
+        public string factJa;
+        public string factEn;
+        public string linkedRecordId;
+        public int day;
+        public int minute;
+        /// <summary>はじめて話した住民（受信側で住民辞典のページを作る。場所は受信側の主人公の位置）。</summary>
+        public string metResidentId;
     }
 
     /// <summary>マネピの伝言板1つ分。</summary>

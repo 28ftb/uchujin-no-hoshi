@@ -76,6 +76,12 @@ namespace Uchujin.Core
         /// </summary>
         public bool IsFreshProfile => IsNewPlanet && (Settings == null || !Settings.KeepProfile);
 
+        /// <summary>技能・経験を初期化するか（新規ゲーム、または次の星へ進む時に「技能を引き継がない」を選んだ時）。</summary>
+        public bool ResetSkills => IsNewPlanet && (Settings == null || !Settings.KeepSkills);
+
+        /// <summary>持ち歩きの宇宙生物を手放すか（新規ゲーム、または「生き物を連れて行かない」を選んだ時）。</summary>
+        public bool ResetCompanions => IsNewPlanet && (Settings == null || !Settings.KeepCompanions);
+
         /// <summary>システム間で生成時に受け渡す任意データ。</summary>
         public readonly Dictionary<string, object> Shared = new Dictionary<string, object>();
 

@@ -213,6 +213,88 @@ namespace Uchujin.Creatures
             return false;
         }
 
+        /// <summary>
+        /// ICreatureService.SetPlacementFor の本体。ホストのコマンド処理の中から、発行者（ゲストを含む）の個体の配置を変える。
+        ///  ・星に置かれた個体：飼い主本人なら何でも、家主（Owner 権限）は星の中での移動だけできる。
+        ///    同行・ケージ（持ち歩く）へ戻す時は、飼い主がローカルなら直接迎え、リモートのゲストには
+        ///    「自動で迎える」ケース（個体データ入り）を渡す（ゲスト側の AdoptIncomingCases が控えを置き換える）。
+        ///  ・発行者がローカル（ホスト本人）の持ち歩く個体：その場で星に置く（ネストしたコマンドを出さない）。
+        ///  ・ゲストが持ち歩く個体はホストにデータが無いので false。ゲストの UI は配置コマンドの前に
+        ///    SetPlacement（＝PlaceCreatureCommand で個体データごと預ける）を呼んでおくこと。
+        /// </summary>
+        private bool ApplyPlacementFor(string issuerId, string uid, CreaturePlacement placement, string targetId)
+        {
+            if (string.IsNullOrEmpty(uid) || placement == CreaturePlacement.Deposited) return false;
+            string local = LocalPlayer != null ? LocalPlayer.PlayerId : null;
+            if (string.IsNullOrEmpty(issuerId)) issuerId = local;
+            bool issuerIsLocal = issuerId != null && issuerId == local;
+            if (!IsAuthority)
+            {
+                // ホスト以外で呼ばれた時は、ローカルプレイヤー自身の操作としてだけ扱う
+                return issuerIsLocal && RequestPlacement(uid, placement, targetId, null);
+            }
+            var issuer = WorldAuthority.PlayerLookup != null ? WorldAuthority.PlayerLookup(issuerId) : null;
+            var permission = issuer != null ? issuer.Permission : issuerIsLocal ? PermissionLevel.Owner : PermissionLevel.Sightseeing;
+
+            if (placed.TryGetValue(uid, out var p))
+            {
+                bool own = p.ownerId == issuerId;
+                if (PlacementText.IsCarried(placement))
+                {
+                    if (!own) return false; // 他人の個体は連れて行けない
+                    placed.Remove(uid);
+                    if (issuerIsLocal) AdoptLocal(p, placement.ToString());
+                    else if (WorldAuthority.Bridge != null) WorldAuthority.Bridge.GrantItemToRemote(issuerId, MakeCaseStack(p, true, placement.ToString()), "creature_retrieve");
+                    else
+                    {
+                        placed[uid] = p; // 渡せない（オフライン）なら動かさない
+                        return false;
+                    }
+                    MarkDirty();
+                    RefreshOwnedAvatars();
+                    return true;
+                }
+                if (!own && permission < PermissionLevel.Owner) return false; // 他人の個体は動かせない（家主は星の中での移動だけ可）
+                p.placement = placement;
+                p.targetId = targetId;
+                if (string.IsNullOrEmpty(p.residentWorldId) && Game != null && Game.Planet != null) p.residentWorldId = Game.Planet.worldId;
+                MarkDirty();
+                RefreshOwnedAvatars();
+                return true;
+            }
+
+            if (issuerIsLocal && carried.TryGetValue(uid, out var c))
+            {
+                if (c.placement == CreaturePlacement.Deposited) return false; // 他の星に預けている控え
+                if (PlacementText.IsCarried(placement))
+                {
+                    if (placement == CreaturePlacement.Companion && c.placement != CreaturePlacement.Companion && CompanionCount() >= MaxCompanions)
+                        placement = CreaturePlacement.Storage;
+                    c.placement = placement;
+                    c.targetId = null;
+                    RefreshOwnedAvatars();
+                    return true;
+                }
+                if (placed.Count >= MaxPlacedPerPlanet) return false;
+                var copy = c.Clone();
+                copy.ownerId = local;
+                copy.placement = placement;
+                copy.targetId = targetId;
+                copy.residentWorldId = Game != null && Game.Planet != null ? Game.Planet.worldId : null;
+                placed[uid] = copy;
+                // 控え（預けている記録）として残す。この星では星の記録が優先される
+                c.placement = CreaturePlacement.Deposited;
+                c.targetId = placement.ToString();
+                c.residentWorldId = copy.residentWorldId;
+                MarkDirty();
+                RefreshOwnedAvatars();
+                return true;
+            }
+
+            // ゲストが持ち歩いている（まだ預かっていない）個体：ホストはデータを持たない
+            return false;
+        }
+
         private CommandResult HandlePlace(PlaceCreatureCommand cmd, CommandContext ctx)
         {
             if (!ctx.HasPermission(PermissionLevel.Helper)) return CommandResult.Fail("この星には生き物を預けられません", "You can't leave creatures on this planet");
@@ -221,9 +303,20 @@ namespace Uchujin.Creatures
             catch (Exception e) { Debug.LogException(e); }
             if (c == null || string.IsNullOrEmpty(c.uid) || CreatureDatabase.Get(c.speciesId) == null)
                 return CommandResult.Fail("生き物の情報が読めませんでした", "Couldn't read the creature");
-            if (placed.TryGetValue(c.uid, out var existing) && existing.ownerId != ctx.IssuerId)
-                return CommandResult.Fail("その生き物はほかの人の子です", "That creature belongs to someone else");
-            c.ownerId = ctx.IssuerId; // なりすまし防止
+            if (placed.TryGetValue(c.uid, out var existing))
+            {
+                if (existing.ownerId != ctx.IssuerId) return CommandResult.Fail("その生き物はほかの人の子です", "That creature belongs to someone else");
+                // 既に預かっている（二度押し・再送）：星の記録を正として配置だけ変える（二重に登録しない）
+                existing.placement = (CreaturePlacement)cmd.placement;
+                existing.targetId = cmd.targetId;
+                MarkDirty();
+                RefreshOwnedAvatars();
+                return CommandResult.Ok();
+            }
+            if (PlacementText.IsCarried((CreaturePlacement)cmd.placement) || (CreaturePlacement)cmd.placement == CreaturePlacement.Deposited)
+                return CommandResult.Fail("その場所には置けません", "Can't place it there");
+            if (placed.Count >= MaxPlacedPerPlanet) return CommandResult.Fail("この星にはもう生き物を置けません", "No more room for creatures on this planet");
+            c.ownerId = ctx.IssuerId; // なりすまし防止（元の飼い主＝発行者）
             c.placement = (CreaturePlacement)cmd.placement;
             c.targetId = cmd.targetId;
             c.residentWorldId = Game.Planet != null ? Game.Planet.worldId : null;

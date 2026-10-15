@@ -29,7 +29,6 @@ namespace Uchujin.Residents
         private Transform sceneRoot;
         private readonly Dictionary<string, List<GameObject>> boxes = new Dictionary<string, List<GameObject>>();
         private ulong seed;
-        private float syncTimer;
         private bool subscribed;
         private SeededRandom fxRng = new SeededRandom(1);
 
@@ -135,7 +134,7 @@ namespace Uchujin.Residents
                 foreach (var r in ordered)
                     if (r.State.active && r.State.planDay != Today) PlanDay(r, Today);
                 foreach (var r in ordered) if (r.State.active) UpdateBehavior(r, true);
-                MarkDirty();
+                MarkDirtyNow();
             }
         }
 
@@ -155,6 +154,7 @@ namespace Uchujin.Residents
             if (sceneRoot != null) UnityEngine.Object.Destroy(sceneRoot.gameObject);
             sceneRoot = null;
             meta = new ResidentsSaveData();
+            ResetSyncState();
             observedKeys.Clear();
             questSpokeFrame.Clear();
             conversationResidentId = null;
@@ -343,7 +343,8 @@ namespace Uchujin.Residents
                 av.Init(r, this);
                 r.Avatar = av;
             }
-            r.Avatar.SetVisible(!r.State.hidden);
+            // この端末で家の中の代理を表示中は本体を隠す（代理は家に入った端末だけが作るローカルの姿）
+            r.Avatar.SetVisible(!r.State.hidden && !r.HasIndoorProxy);
             r.Avatar.SetBaseExpression(r.State.face);
             r.Avatar.SetHeldItem(r.State.carrying ? "box" : r.State.heldItemId);
         }
@@ -402,17 +403,11 @@ namespace Uchujin.Residents
             if (ordered.Count == 0) return;
             bool paused = Clock != null && Clock.IsPaused;
             if (IsAuthority && !paused) MoveResidents(deltaTime);
+            TickIndoorProxies();
             if (!paused) TickLocalSpeech();
-            if (IsAuthority && WorldAuthority.IsMultiplayer)
-            {
-                syncTimer += deltaTime;
-                if (syncTimer >= ResidentTuning.SyncInterval)
-                {
-                    syncTimer = 0f;
-                    // 住民の位置・行動はホストが確定し、約1秒ごとにゲストへ送る（マルチ仕様 §14）
-                    MarkDirty();
-                }
-            }
+            // 住民の位置・行動はホストが確定し、軽い状態（residents.live）を約0.5秒ごと、
+            // 全体状態（記憶・関係・予定）は変化があった時だけ最短10秒間隔でゲストへ送る（マルチ仕様 §14）
+            if (IsAuthority) TickSync(deltaTime);
         }
 
         public override void OnGameMinutesAdvanced(int minutes)
@@ -456,7 +451,7 @@ namespace Uchujin.Residents
             foreach (var r in ordered) if (r.State.active || r.State.visitDay == day) PlanDay(r, day);
             foreach (var r in ordered) SyncAvatar(r);
             RefreshBoxes();
-            MarkDirty();
+            MarkDirtyNow(); // 1日の予定・引っ越し・再訪がまとめて変わる
         }
 
         // =====================================================================
@@ -576,6 +571,13 @@ namespace Uchujin.Residents
         }
 
         public UtteranceRecord Speak(string residentId, Utterance utterance, SpeechChannel channel = SpeechChannel.Direct)
+            => Speak(residentId, utterance, channel, true);
+
+        /// <summary>
+        /// relayToGuests=false：各端末がそれぞれ生成する発話（立ち話・独り言・遠くから手を振る）。ホストでもゲストへ中継しない。
+        /// ホストだけが生成する発話（AI の反応・伝言・会話ウィンドウ・他モジュールの依頼）は true で中継され、二重にならない。
+        /// </summary>
+        internal UtteranceRecord Speak(string residentId, Utterance utterance, SpeechChannel channel, bool relayToGuests)
         {
             var r = GetResident(residentId);
             if (utterance == null) return null;
@@ -585,11 +587,17 @@ namespace Uchujin.Residents
                 questSpokeFrame[r.Id] = UnityEngine.Time.frameCount;
             var speech = Game != null ? Game.Service<ISpeechService>() : null;
             UtteranceRecord rec = null;
-            if (r != null && r.Avatar != null)
+            // 吹き出しは今いる場所（家の中の代理を表示中なら代理）に出す
+            var anchor = r != null ? r.Transform : null;
+            if (r != null && anchor != null)
             {
-                r.Avatar.ShowExpression(utterance.expression, 3.5f);
-                foreach (var g in utterance.gestures) r.Avatar.PlayGesture(g);
-                if (speech != null) rec = speech.Speak(utterance, r.Avatar.transform, channel, "resident");
+                if (r.Avatar != null)
+                {
+                    r.Avatar.ShowExpression(utterance.expression, 3.5f);
+                    foreach (var g in utterance.gestures) r.Avatar.PlayGesture(g);
+                }
+                if (speech != null) rec = speech.Speak(utterance, anchor, channel, "resident", relayToGuests);
+                if (relayToGuests) AddSpeechCues(r, utterance);
             }
             else if (speech != null)
             {
@@ -622,6 +630,7 @@ namespace Uchujin.Residents
             r.State.goZ = position.z;
             r.State.goUntil = until;
             r.State.goReason = reasonTag;
+            OnGoToRequested(r, position);
             r.State.hidden = false;
             r.State.chatPartnerId = null;
             if (IsAuthority)
@@ -817,7 +826,8 @@ namespace Uchujin.Residents
                 moveInsTotal = meta.moveInsTotal,
                 reputation = meta.reputation,
                 lastSimDay = meta.lastSimDay,
-                lastWeatherForecastDay = meta.lastWeatherForecastDay
+                lastWeatherForecastDay = meta.lastWeatherForecastDay,
+                pendingRecords = meta.pendingRecords
             };
             foreach (var r in ordered)
             {
@@ -854,6 +864,7 @@ namespace Uchujin.Residents
             meta.reputation = data.reputation ?? new List<PlayerReputation>();
             meta.lastSimDay = data.lastSimDay;
             meta.lastWeatherForecastDay = data.lastWeatherForecastDay;
+            meta.pendingRecords = data.pendingRecords ?? new List<PendingPlayerRecord>();
 
             var seen = new HashSet<string>();
             bool membershipChanged = false;
@@ -880,7 +891,7 @@ namespace Uchujin.Residents
                 if (residents.TryGetValue(e.id, out var existing))
                 {
                     var oldJob = existing.State.job;
-                    if (live && existing.State.active && !e.state.active) OnLocalSawMoveOut(existing);
+                    // 引っ越していった日の観察記録はホストが知っていたプレイヤー全員へ届ける（MoveOut → RecordObservationFor）
                     existing.State = e.state;
                     if (!e.regenerable) existing.Profile = profile;
                     if (live && oldJob != e.state.job) RebuildJobProp(existing);

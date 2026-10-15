@@ -836,6 +836,8 @@ namespace Uchujin.Housing
                     proxy = ResidentProxy.Create(visitorsRoot, HouseInteriorSpawn, info, inv.residentId, this);
                     proxy.InvitationId = inv.id;
                     visitorProxies[inv.id] = proxy;
+                    // 訪問中は本体（家の前に立っている）の代わりにこの姿を住民として扱ってもらう（吹き出し・身振り・会話）
+                    RegisterIndoorProxy(proxy, HousingConst.LocHouse, VisitEndMinuteOfDay(inv));
                     WorldLabels.Add(proxy.transform, () => ResidentName(inv.residentId), new Vector3(0, 1.5f, 0), UIStyles.AlienText, 14f, true);
                     if (IsAuthority && !greeted.Contains(inv.id))
                     {
@@ -965,6 +967,7 @@ namespace Uchujin.Housing
         {
             if (proxy == null) return;
             proxy.Leaving = true;
+            ReleaseIndoorProxy(proxy); // 帰り始めたら本体（家の前）に戻す
             var exit = HouseInteriorSpawn + new Vector3(0, 0, -0.9f);
             var path = IndoorPath(proxy.transform.position, exit, out bool teleport);
             proxy.OnArrive = p => { if (p != null) UnityEngine.Object.Destroy(p.gameObject); };
@@ -974,11 +977,83 @@ namespace Uchujin.Housing
 
         private void ClearVisitorProxies()
         {
-            foreach (var p in visitorProxies.Values) if (p != null) UnityEngine.Object.Destroy(p.gameObject);
+            foreach (var p in visitorProxies.Values) if (p != null) { ReleaseIndoorProxy(p); UnityEngine.Object.Destroy(p.gameObject); }
             visitorProxies.Clear();
             greeted.Clear();
             reactTimeout.Clear();
             visitorsRoot = null;
+        }
+
+        // ------------------------------------------------------------
+        // 住民本体の代わり（IResidentDirectory.SetIndoorProxy）
+        // ------------------------------------------------------------
+
+        /// <summary>代理として登録した姿（住民ID → 姿）。同じ住民に別の姿を登録し直したら、後の方が有効。</summary>
+        private readonly Dictionary<string, ResidentProxy> indoorProxies = new Dictionary<string, ResidentProxy>();
+
+        /// <summary>訪問の終わりの時刻（その日の分。日をまたぐ時は日の終わりまで）。</summary>
+        private int VisitEndMinuteOfDay(Invitation inv)
+        {
+            int last = TimeSystem.MinutesPerDay - 1;
+            if (Clock == null || inv == null || inv.endTotalMinutes <= 0) return last;
+            long dayStart = TimeSystem.ToTotalMinutes(Clock.Day, 0, 0);
+            long m = inv.endTotalMinutes - dayStart;
+            return (int)Math.Max(Clock.MinuteOfDay, Math.Min(last, m));
+        }
+
+        private bool RegisterIndoorProxy(ResidentProxy proxy, string areaId, int untilMinuteOfDay)
+        {
+            if (proxy == null || string.IsNullOrEmpty(proxy.ResidentId)) return false;
+            var dir = Game?.Service<IResidentDirectory>();
+            if (dir == null) return false;
+            try { dir.SetIndoorProxy(proxy.ResidentId, proxy.transform, areaId, untilMinuteOfDay); }
+            catch (Exception e) { Debug.LogException(e); return false; }
+            if (indoorProxies.TryGetValue(proxy.ResidentId, out var prev) && prev != null && prev != proxy) prev.IndoorRegistered = false;
+            indoorProxies[proxy.ResidentId] = proxy;
+            proxy.IndoorRegistered = true;
+            return true;
+        }
+
+        /// <summary>代理の登録を外す（その姿が今の代理の時だけ。住民の本体の表示に戻る）。</summary>
+        private void ReleaseIndoorProxy(ResidentProxy proxy)
+        {
+            if (proxy == null || !proxy.IndoorRegistered) return;
+            proxy.IndoorRegistered = false;
+            if (string.IsNullOrEmpty(proxy.ResidentId)) return;
+            if (!indoorProxies.TryGetValue(proxy.ResidentId, out var cur) || (cur != null && cur != proxy)) return;
+            indoorProxies.Remove(proxy.ResidentId);
+            try { Game?.Service<IResidentDirectory>()?.ClearIndoorProxy(proxy.ResidentId); }
+            catch (Exception e) { Debug.LogException(e); }
+        }
+
+        /// <summary>代理の姿が住民として話した（会話の返事など。本モジュール以外の発話）：姿で身振りを見せる。</summary>
+        private void OnUtteranceSpoken(UtteranceSpokenEvent e)
+        {
+            var rec = e.Record;
+            if (rec == null || string.IsNullOrEmpty(rec.speakerId) || rec.gestures == null || rec.gestures.Count == 0) return;
+            if (rec.contextTag != null && rec.contextTag.StartsWith("housing.")) return; // 自分で出した発話は身振り済み
+            if (!indoorProxies.TryGetValue(rec.speakerId, out var proxy) || proxy == null || proxy.Leaving) return;
+            proxy.PlayGesture(rec.gestures[rec.gestures.Count - 1].gesture);
+        }
+
+        /// <summary>代理の姿に [E]：住民本体の代わりとして登録済みなら会話を開く。登録できていなければ手を振ってあいさつ。</summary>
+        public void InteractWithProxy(ResidentProxy proxy, PlayerState player)
+        {
+            if (proxy == null || player == null) return;
+            if (proxy.IndoorRegistered)
+            {
+                var dir = Game?.Service<IResidentDirectory>();
+                if (dir != null)
+                {
+                    try
+                    {
+                        dir.OpenConversation(proxy.ResidentId, player);
+                        return;
+                    }
+                    catch (Exception e) { Debug.LogException(e); }
+                }
+            }
+            GreetProxy(proxy, player);
         }
 
         /// <summary>訪問者の姿に [E]：手を振ってあいさつ。相手もあいさつを返す。</summary>
@@ -1013,6 +1088,9 @@ namespace Uchujin.Housing
                 if (d < best) { best = d; nearest = proxy; }
             }
             if (nearest == null) return;
+            // 代理として登録済みで、身振りの対象（Core が位置から選ぶ）がこの住民なら、返事は住民モジュールがする（二重に返さない）。
+            // 返事の身振りは OnUtteranceSpoken で姿に出る
+            if (nearest.IndoorRegistered && e.TargetResidentId == nearest.ResidentId) return;
             switch (e.Gesture)
             {
                 case PlayerGesture.Wave:

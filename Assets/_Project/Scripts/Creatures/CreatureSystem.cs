@@ -85,13 +85,19 @@ namespace Uchujin.Creatures
 
         public override void OnNewPlanet(PlanetContext ctx)
         {
-            // 最初の星の新規ゲームなら持ち歩く個体・技能も初期化（「次の星へ」は引き継ぐ）
-            if (ctx.Planet.planetIndex <= 1 && string.IsNullOrEmpty(ctx.Planet.previousWorldId)) ResetProfile();
+            // 新規ゲーム、または次の星へ進む時の選択に従って、持ち歩く個体・技能を初期化する
+            if (ctx.ResetCompanions) carried.Clear();
+            if (ctx.ResetSkills) ResetSkills();
         }
 
         private void ResetProfile()
         {
             carried.Clear();
+            ResetSkills();
+        }
+
+        private void ResetSkills()
+        {
             CatchLevel = 1;
             CatchExp = 0;
             TotalCaught = 0;
@@ -251,6 +257,16 @@ namespace Uchujin.Creatures
         public bool SetPlacement(string uid, CreaturePlacement placement, string targetId)
         {
             return RequestPlacement(uid, placement, targetId, null);
+        }
+
+        public bool SetPlacementFor(string issuerId, string uid, CreaturePlacement placement, string targetId)
+        {
+            return ApplyPlacementFor(issuerId, uid, placement, targetId);
+        }
+
+        public IReadOnlyList<CreatureView> GetAllOnPlanet()
+        {
+            return GetOwned(AnyOwner);
         }
 
         public string GetSpeciesName(string speciesId)

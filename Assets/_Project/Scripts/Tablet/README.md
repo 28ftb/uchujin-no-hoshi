@@ -11,6 +11,7 @@
 |---|---|
 | `TabletSystem.cs` | ライフサイクル、セーブ（スコープ分け）、イベント購読、`ITabletService`（開閉・アプリ登録・推測訳・辞書の書き出し/取り込み） |
 | `TabletSystem.Knowledge.cs` | 辞書・音声カード・資料・住民辞典のデータ操作（`SaveVoiceCard` `AddMaterial` `RecordResidentMet` `RecordResidentObservation`、自動索引） |
+| `TabletSystem.Remote.cs` | 個人への記録（マルチ）：`AddMaterialFor` `RecordResidentObservationFor`、一時メッセージ `"tablet.record"` の送受信、ホストでしか起きない出来事のゲスト本人への転送、発話の原本の自前保持 |
 | `TabletSystem.Manepi.cs` | `IManepiService`（伝言板・`LeaveMessage`・`SpawnManepi`・`OpenBoard`）、伝言広場のマネピ設置、身振りの真似、伝言消去コマンド |
 | `TabletData.cs` | セーブ用 DTO（JsonUtility 用。Dictionary 不使用） |
 | `TabletTuning.cs` | 【仮数値】の定数と、端末設定（PlayerPrefs） |
@@ -67,6 +68,12 @@
 - 資料詳細：事実（`factJa/En`）・日時・結び付いた発話（再生・カード化）・関係する住民（顔・呼び名）・関係する物・写真。
 - プレイヤーのメモと関連付け（住民・単語）は `MaterialNote` に別保存。単語に関連付けると辞書の証拠（material）にもなる。
 
+### 個人への記録（マルチ：ホストで起きた事実をゲスト本人へ）
+- `AddMaterialFor(playerId, material, linkedRecord)` / `RecordResidentObservationFor(playerId, residentId, factJa, factEn, linkedRecordId)`：宛先がローカルなら `AddMaterial` / `RecordResidentObservation` と同じ。リモートなら（ホスト側のみ）`WorldAuthority.SendTransient(playerId, "tablet.record", json)` で `TabletRecordMessage`（資料・観察・結び付いた発話の原本・はじめて話した住民）を送り、受信側の `RegisterTransientHandler("tablet.record")` が自分の知識（PlayerPlanetKnowledge）へ入れる。
+- 受信した発話の原本は `KnowledgeData.receivedRecords` に保持し、`ResolveRecord`（カード→マネピ→会話ログ→この写し）で引けるので、ゲストの会話ログに無い発話でも資料から再生・音声カード化・辞書の証拠にできる。ローカルの `AddMaterialFor` で原本を渡した時も写しを持つ（会話ログから消えても引ける）。上限 `TabletTuning.MaxReceivedRecords`（参照されていない古いものから整理）。
+- 受信した資料は「資料ボックスに記録が届きました（題名）」とトースト。ホスト（権威側）はゲストからの `"tablet.record"` を受け付けない（ゲストからホストの記録を書き換えさせない）。
+- ホストでしか発行されない共有イベントを、本人がリモートのゲストなら本人へ転送する：`ResidentTalkedEvent`（住民辞典のページ作成。場所は受信側の主人公の位置）、`GiftGivenEvent`（贈った事実）、`ShopItemSoldEvent`（委託品の持ち主へ購入の事実）、`QuestStateChangedEvent`（依頼の達成）。同じ事実が続けて起きた時（まとめ買い）は1回だけ送る。
+
 ### 住民辞典（AppId `residents`、タ§7・言§8.5）
 - `RecordResidentMet` でページ作成（通し番号 No.xxx、初めて会った日・場所を事実として記録、トースト）。`ResidentTalkedEvent`（自分）でも自動で呼ぶ。
 - 名前は分からない前提：あだ名・聞き取った名前メモはプレイヤーが書く。内部名・本名は表示しない（表示名はあだ名→聞き取った名前→No.xxx）。
@@ -102,7 +109,7 @@
 | スコープ | 内容 |
 |---|---|
 | `Planet` | `ManepiPlanetData`（各伝言板の伝言） |
-| `PlayerPlanetKnowledge` | `KnowledgeData`（辞書・文法ノート・別冊・音声カード＋注釈・資料＋メモ・住民辞典・関係図・写真情報・既聴の伝言ID） |
+| `PlayerPlanetKnowledge` | `KnowledgeData`（辞書・文法ノート・別冊・音声カード＋注釈・資料＋メモ・住民辞典・関係図・写真情報・既聴の伝言ID・資料や観察に結び付いた発話の原本の写し `receivedRecords`） |
 | `PlayerProfile` | なし（端末の好みは PlayerPrefs） |
 
 - 星ごとの分離はコアの Knowledge スコープ（訪問先は `ReadVisitKnowledge`）に任せている。写真ファイルも worldId ごとのフォルダ。
@@ -116,6 +123,7 @@
 - 文法ノートの「部分文字列への印」は単語単位（語の一部は辞書の「語の一部」ページで扱う）。
 - 伝言の再生順・件数・保持日数は【未決定】のため仮数値。
 - マネピの捕獲・飼育と伝言能力の関係（Creatures モジュール側）は未連携。
+- 個人への記録の一時メッセージは保存・再送しない。宛先のゲストが接続していない時（退出中）や、参加直後に自分の知識を読み込む前に届いた分は失われる（商店の売上レポート・依頼帳など、星のデータから後で見られる記録は残る）。
 
 ## Unity 上で確認が必要な点
 - IMGUI の配置（1080p 以外の解像度・横長画面）、文字サイズ、長い宇宙語の折り返し（`TabletGui.WordFlow`）、スクロール量。
@@ -126,6 +134,7 @@
 - `ISpeechService.Replay(record, マネピのVoiceAnchor)` で吹き出しがマネピの頭上に出るか。
 - ピン留め・[K] 案内の表示位置が HUD と重ならないか。
 - 大量のカード・辞書項目（数百件）での IMGUI の重さ（各フレームで一覧を作り直している）。
+- マルチ：ゲストの委託品が売れた時・ゲストが依頼を達成した時・ゲストが住民に贈り物をした時に、ゲストのタブレットへ資料・住民辞典の観察が届くか（`"tablet.record"`。Network の `SendTransientTo` → `DispatchTransient`）。届いた資料の「結び付いた発話」を再生・音声カード化できるか。
 
 ## 他モジュールとの連携点
 ### 呼ぶ契約
@@ -136,7 +145,8 @@
 - `ItemRegistry`（物の名前・色）。
 
 ### 提供する契約
-- `ITabletService`：`RegisterApp` `Open` `Close` `IsOpen` `SaveVoiceCard` `AddMaterial` `RecordResidentObservation` `RecordResidentMet` `GetPlayerGloss` `ShowGlossOverlay` `ExportDictionary` `ImportDictionary`。
+- `ITabletService`：`RegisterApp` `Open` `Close` `IsOpen` `SaveVoiceCard` `AddMaterial` `RecordResidentObservation` `RecordResidentMet` `AddMaterialFor` `RecordResidentObservationFor` `GetPlayerGloss` `ShowGlossOverlay` `ExportDictionary` `ImportDictionary`。
+  - ホストで起きた事実を本人へ記録する時は `AddMaterialFor(playerId, …)` / `RecordResidentObservationFor(playerId, …)` を使う（ローカルなら従来と同じ）。
 - `IManepiService`：`LeaveMessage` `GetMessages` `ClearMessagesOlderThan` `SpawnManepi` `OpenBoard`。
 - 利用例：Shop → `SpawnManepi("shop", …)`・`LeaveMessage("shop", rec)`・`AddMaterial(SalesRecord)`・`SaveVoiceCard`。Housing → `SpawnManepi("home:"+playerId, …)`。Residents → `RecordResidentMet`/`RecordResidentObservation`/`LeaveMessage("plaza", …)`（予報・引っ越しのお知らせ・行事の告知）。Quests → 依頼帳アプリを `RegisterApp`、`AddMaterial(QuestRequest)`。Network → `ExportDictionary`/`ImportDictionary`。Language → `ShowGlossOverlay`/`GetPlayerGloss`、単語クリックで `DictionaryLookupRequestEvent`。
 
@@ -147,6 +157,9 @@
 
 ### コマンド
 - `ManepiDeleteMessageCommand { boardId, recordId }`（伝言を消す。ホスト権威）。
+
+### 一時メッセージ（`WorldAuthority.RegisterTransientHandler`）
+- `"tablet.record"`：`TabletRecordMessage`（ホスト → 本人。資料・観察・発話の原本・はじめて話した住民）。
 
 ### アイテム
 - 登録なし（マネピの生物種 `SharedItemIds.SpeciesManepi` は Creatures 担当）。

@@ -8,6 +8,8 @@ namespace Uchujin.Housing
 {
     /// <summary>
     /// 家の中に出す住民の簡易な姿（訪問者・住民の家の住人）。本体の住民は Residents モジュールが屋外で動かしている。
+    /// 姿を出している間は IResidentDirectory.SetIndoorProxy で本体の代わりとして登録する（本体は隠れ、吹き出し・身振りの対象・
+    /// 位置がこの姿になる）。帰る・家を出る時に ClearIndoorProxy で戻す。
     /// 10系統の宇宙人（キャラクターデザイン案 v0.1）ごとに形と家具の使い方を変える（家具仕様 §8）。
     /// </summary>
     public class ResidentProxy : MonoBehaviour, IInteractable
@@ -24,6 +26,8 @@ namespace Uchujin.Housing
         public Action<ResidentProxy> OnArrive;
         public bool Leaving;
         public float WalkSpeed = 1.7f;
+        /// <summary>IResidentDirectory.SetIndoorProxy で住民本体の代わりとして登録済み（[E] で会話できる）。</summary>
+        public bool IndoorRegistered;
 
         private readonly List<Vector3> path = new List<Vector3>();
         private float targetYaw;
@@ -347,11 +351,12 @@ namespace Uchujin.Housing
         }
 
         // ------------------------------------------------------------
-        // [E]：あいさつ（主人公は話さない。身振りで挨拶すると相手も返す）
+        // [E]：住民本体の代わりとして登録済みなら会話（住民の会話メニュー）。
+        // 登録できなかった時だけ、手を振ってあいさつ（主人公は話さない。身振りで挨拶すると相手も返す）
         // ------------------------------------------------------------
 
-        public string GetInteractionPrompt(PlayerState player) => Loc.T("手を振ってあいさつする", "Wave hello");
+        public string GetInteractionPrompt(PlayerState player) => IndoorRegistered ? Loc.T("話しかける", "Talk") : Loc.T("手を振ってあいさつする", "Wave hello");
         public bool CanInteract(PlayerState player) => System != null && !Leaving;
-        public void Interact(PlayerState player) => System?.GreetProxy(this, player);
+        public void Interact(PlayerState player) => System?.InteractWithProxy(this, player);
     }
 }

@@ -240,6 +240,8 @@ namespace Uchujin.Core
         public string contextTag;
         /// <summary>場面に関わる物（アイテムID・住民ID等）。タブレットの資料に「その場にあった物」として残る。</summary>
         public List<string> relatedIds = new List<string>();
+        /// <summary>話しかけた相手（プレイヤーIDや住民ID。空なら特定の相手なし）。中継先で「自分に向けた言葉か」を判定する。</summary>
+        public string addresseeId;
 
         public Utterance() { }
 

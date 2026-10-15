@@ -16,6 +16,10 @@ namespace Uchujin.Core
         public bool SkipPrologue;
         /// <summary>true なら持ち物・お金・道具を引き継ぐ（次の星へ進む場合）。false なら初期化。</summary>
         public bool KeepProfile;
+        /// <summary>次の星へ進む時、技能・経験（釣り・鉱山・農業・生き物取りのレベル、覚えた技、料理の習熟）を引き継ぐか。</summary>
+        public bool KeepSkills;
+        /// <summary>次の星へ進む時、連れている（同行・持ち歩きの）宇宙生物を連れて行くか。</summary>
+        public bool KeepCompanions;
         public int PlanetIndex = 1;
         public string PreviousWorldId;
     }
@@ -373,9 +377,26 @@ namespace Uchujin.Core
             }
             foreach (var s in systems)
             {
-                if (s.SaveKey != saveKey) continue;
-                RunSafe(s, "RestoreState(Remote)", () => s.RestoreState(SaveScope.Planet, null, json));
+                if (s.SaveKey == saveKey)
+                {
+                    RunSafe(s, "RestoreState(Remote)", () => s.RestoreState(SaveScope.Planet, null, json));
+                    return;
+                }
             }
+            var sub = FindSubKeyOwner(saveKey);
+            if (sub != null) RunSafe(sub, "RestoreSyncState", () => sub.RestoreSyncState(saveKey, json));
+        }
+
+        private GameSystemBase FindSubKeyOwner(string key)
+        {
+            foreach (var s in systems)
+            {
+                IEnumerable<string> keys = null;
+                try { keys = s.SyncSubKeys; } catch (Exception e) { Debug.LogException(e); }
+                if (keys == null) continue;
+                foreach (var k in keys) if (k == key) return s;
+            }
+            return null;
         }
 
         /// <summary>ホスト：星の状態を1システム分取り出す（同期用）。</summary>
@@ -386,6 +407,13 @@ namespace Uchujin.Core
             {
                 if (s.SaveKey != saveKey) continue;
                 try { return s.CaptureState(SaveScope.Planet, null); }
+                catch (Exception e) { Debug.LogException(e); }
+                return null;
+            }
+            var sub = FindSubKeyOwner(saveKey);
+            if (sub != null)
+            {
+                try { return sub.CaptureSyncState(saveKey); }
                 catch (Exception e) { Debug.LogException(e); }
             }
             return null;

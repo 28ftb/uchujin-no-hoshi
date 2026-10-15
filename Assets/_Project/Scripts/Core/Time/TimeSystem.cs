@@ -177,13 +177,15 @@ namespace Uchujin.Core
                 TotalMinutes += step;
                 remaining -= step;
 
-                if (Game != null) Game.NotifyMinutesAdvanced(step);
-                EventBus.Publish(new MinuteTickEvent { Day = Day, Hour = Hour, Minute = Minute, TotalMinutes = TotalMinutes });
-
+                // 0:00 をまたいだら、日付更新（OnDayEnded → OnDayStarted）を先に済ませてから「時間が進んだ」を通知する。
+                // （新しい日付のまま、日付更新前の状態で OnGameMinutesAdvanced が呼ばれる順序の食い違いを防ぐ）
                 if (Day != prevDay)
                 {
                     if (Game != null) Game.RunDayChange(prevDay, Day);
                 }
+
+                if (Game != null) Game.NotifyMinutesAdvanced(step);
+                EventBus.Publish(new MinuteTickEvent { Day = Day, Hour = Hour, Minute = Minute, TotalMinutes = TotalMinutes });
                 if (Hour != prevHour)
                 {
                     EventBus.Publish(new HourChangedEvent { Day = Day, Hour = Hour });

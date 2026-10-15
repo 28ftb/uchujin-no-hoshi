@@ -359,7 +359,12 @@ namespace Uchujin.Housing
                 // 住んでいた生き物は家で自由に暮らす（ほかの場所へ移った後なら、その配置を上書きしない）
                 var cs = Game.Service<ICreatureService>();
                 if (IsCreatureLivingIn(cs, f.creatureUid, f.instanceId))
-                    cs.SetPlacement(f.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse);
+                {
+                    // 住処が無くなった結果の移動なので、飼い主の操作として家へ移す（家具の持ち主と生き物の飼い主が違うこともある）
+                    var cv = cs.Get(f.creatureUid);
+                    string keeper = cv != null && !string.IsNullOrEmpty(cv.OwnerId) ? cv.OwnerId : ctx.IssuerId;
+                    cs.SetPlacementFor(keeper, f.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse);
+                }
                 f.creatureUid = null;
             }
             f.location = HousingConst.LocStored;
@@ -743,31 +748,39 @@ namespace Uchujin.Housing
             var creatures = Game.Service<ICreatureService>();
             if (creatures == null) return CommandResult.Fail("生き物の仕組みがありません", "No creature system");
             var view = creatures.Get(cmd.creatureUid);
-            if (view == null) return CommandResult.Fail("生き物が見つかりません", "Creature not found");
+            // ゲストが持ち歩いている子は、UI が先に Creatures へ預けている（PrepareCreatureForPlanet）。預かれていなければここで見つからない
+            if (view == null) return CommandResult.Fail("生き物が見つかりません（まだ星に預けられていません）", "Creature not found (it hasn't been left on this planet)");
             if (!string.IsNullOrEmpty(view.OwnerId) && view.OwnerId != ctx.IssuerId) return CommandResult.Fail("飼い主しか住まわせられません", "Only its keeper can do that");
+            PlacedFurniture habitatFurniture = null;
+            if (cmd.mode == "habitat")
+            {
+                habitatFurniture = FindFurniture(cmd.instanceId);
+                if (habitatFurniture == null) return CommandResult.Fail("家具が見つかりません", "Furniture not found");
+                // 先住の子は家で自由に暮らしてもらう（ほかの人の子は動かせないので、その時は断る）
+                if (!string.IsNullOrEmpty(habitatFurniture.creatureUid) && habitatFurniture.creatureUid != cmd.creatureUid && IsCreatureLivingIn(creatures, habitatFurniture.creatureUid, habitatFurniture.instanceId)
+                    && !creatures.SetPlacementFor(ctx.IssuerId, habitatFurniture.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse))
+                    return CommandResult.Fail("ほかの人の生き物が住んでいます", "Someone else's creature lives there");
+            }
             foreach (var other in state.furniture) if (other.creatureUid == cmd.creatureUid) other.creatureUid = null;
             string name = !string.IsNullOrEmpty(view.Nickname) ? view.Nickname : creatures.GetSpeciesName(view.SpeciesId);
             switch (cmd.mode)
             {
                 case "habitat":
                 {
-                    var f = FindFurniture(cmd.instanceId);
-                    if (f == null) return CommandResult.Fail("家具が見つかりません", "Furniture not found");
-                    if (!string.IsNullOrEmpty(f.creatureUid) && f.creatureUid != cmd.creatureUid && IsCreatureLivingIn(creatures, f.creatureUid, f.instanceId))
-                        creatures.SetPlacement(f.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse);
-                    if (!creatures.SetPlacement(cmd.creatureUid, CreaturePlacement.Habitat, f.instanceId)) return CommandResult.Fail("今は移せないようです", "Can't move it right now");
+                    var f = habitatFurniture;
+                    if (!creatures.SetPlacementFor(ctx.IssuerId, cmd.creatureUid, CreaturePlacement.Habitat, f.instanceId)) return CommandResult.Fail("今は移せないようです", "Can't move it right now");
                     f.creatureUid = cmd.creatureUid;
                     AddMemory(f, "creature", string.Format("{0}日目、{1}が住み始めた。", Today, name), string.Format("Day {0}: {1} moved in.", Today, name));
                     break;
                 }
                 case "home":
-                    if (!creatures.SetPlacement(cmd.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse)) return CommandResult.Fail("今は移せないようです", "Can't move it right now");
+                    if (!creatures.SetPlacementFor(ctx.IssuerId, cmd.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse)) return CommandResult.Fail("今は移せないようです", "Can't move it right now");
                     break;
                 case "companion":
-                    if (!creatures.SetPlacement(cmd.creatureUid, CreaturePlacement.Companion, ctx.IssuerId)) return CommandResult.Fail("今は連れて行けないようです", "Can't take it along now");
+                    if (!creatures.SetPlacementFor(ctx.IssuerId, cmd.creatureUid, CreaturePlacement.Companion, ctx.IssuerId)) return CommandResult.Fail("今は連れて行けないようです", "Can't take it along now");
                     break;
                 default:
-                    if (!creatures.SetPlacement(cmd.creatureUid, CreaturePlacement.Storage, "")) return CommandResult.Fail("今は移せないようです", "Can't move it right now");
+                    if (!creatures.SetPlacementFor(ctx.IssuerId, cmd.creatureUid, CreaturePlacement.Storage, "")) return CommandResult.Fail("今は移せないようです", "Can't move it right now");
                     break;
             }
             AfterChange();

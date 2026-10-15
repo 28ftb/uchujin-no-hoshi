@@ -167,7 +167,13 @@ namespace Uchujin.Network
             HostSyncUpdate(dt);
         }
 
-        /// <summary>MarkDirty されたキーを 0.3〜0.5 秒ごとにまとめて送る（キー単位の状態。完全な差分ではない）。</summary>
+        /// <summary>
+        /// MarkDirty されたキーを 0.3〜0.5 秒ごとにまとめて送る（キー単位の状態。完全な差分ではない）。
+        /// キーはシステムの SaveKey（"residents" など）と同期専用の副キー（"residents.live" など）の両方。
+        /// どちらも Game.CapturePlanetState(key) で取り出せ（副キーは Game が持ち主の CaptureSyncState へ振り分ける）、
+        /// 間隔・ハッシュ比較はキーごとに独立している。小さな副キーは最短間隔（PerKeyMinInterval＝0.4秒）で送られ、
+        /// 大きな全体状態だけが大きさに応じて間引かれる。
+        /// </summary>
         private void HostSyncUpdate(float dt)
         {
             syncTimer += dt;
@@ -267,6 +273,9 @@ namespace Uchujin.Network
                     break;
                 case NetMsg.ProfileUpdate:
                     HostHandleProfileUpdate(sp, NetCodec.Parse<ProfileUpdateMsg>(body));
+                    break;
+                case NetMsg.Transient:
+                    HostHandleTransient(sp, NetCodec.Parse<TransientMsg>(body));
                     break;
                 case NetMsg.Gesture:
                 {
@@ -485,6 +494,13 @@ namespace Uchujin.Network
             SendTo(sp, NetMsg.SnapshotEnd, new EmptyMsg());
             // スナップショット以降の変化は差分で届けるため、「前回送った内容」の記録を捨てて次の差分を必ず送る
             lastSentHash.Clear();
+            // スナップショットに入らないキー（同期専用の副キー "residents.live" など・"core.time"）は、
+            // 次の MarkDirty を待たずに送る（参加者が最新の軽い状態をすぐ受け取れるように）。
+            // 副キーは Game.CaptureAllPlanetEntries（SaveKey のみ）に含まれないので、スナップショット・セーブには入らない。
+            var inSnapshot = new HashSet<string>();
+            foreach (var e in entries) if (e != null && e.key != null) inSnapshot.Add(e.key);
+            foreach (var k in lastSentTime.Keys)
+                if (!inSnapshot.Contains(k) && k != SaveKey) dirtyKeys.Add(k);
         }
 
         private void HostOnGuestReady(SessionPlayer sp)

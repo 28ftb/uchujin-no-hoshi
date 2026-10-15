@@ -17,6 +17,7 @@
 | `QuestSystem.Events.cs` | 村の行事（誕生日・市場の日・星の光帯の観察会・お別れ会・引っ越し祝い） |
 | `QuestSystem.Book.cs` | 依頼帳のデータ操作（宇宙語の原文の写し・手掛かり・資料ボックス連携） |
 | `QuestSystem.Stories.cs` / `QuestStories.cs` | 個別ストーリーの窓口と5つの物語 |
+| `QuestSystem.Techniques.cs` | 釣り名人に教わった技 → 釣りモジュールの技の対応表（`QuestFishingTechniques`）と反映 |
 | `QuestSpeech.cs` | 依頼・反応・告知の意味データ（`Utterance`/`MeaningFrame`）の組み立て |
 | `QuestContent.cs` | クエスト用アイテムの登録、この星で入手可能な物の収集と判定 |
 | `QuestData.cs` / `QuestCommands.cs` | 保存・同期データ、`WorldCommand` |
@@ -41,7 +42,9 @@
   **誕生日の贈り物探し（§10）**：誕生日が近い住民の友達が「贈り物を一緒に探して」と相談。何を渡しても成立し、当日に依頼主が相手へ渡す（`IResidentDirectory.GiveItem`）。相手の好みで反応が変わり、後日依頼主がその様子を報告する。手伝わなければ依頼主が自分で用意する。
 - **② 個別ストーリー（§9、5本・多段階）**：プレイヤーごとに進行（§17【未決定】→個人の関係として扱う【仮】）、暮らしの変化（花・作品・模型）は星で共通。
   1. **青い花**（§9.2。`Florist`→`Retired`→`FarmingMaster`）：0 青い花を大事そうに見せる／主人公の店に青い花があれば実際に買う（`IShopService.ResidentVisit`）→ 1 友達の家の前でためらって帰る（17:30頃、近くにいれば聞こえる）→ 2 花束を友達に届けてほしい（見本＋指さし。依頼主に返すと困った顔で友達を指さす：§4.3）→ 3 二人がベンチで一緒に過ごす・友達の家に青い花 → 4 花の意味（理由の文で「昔の友達を覚えているから」）。不参加なら自分で届ける。友達が先に引っ越したら自分の庭に植える。
-  2. **釣り名人**（§9.3）：一緒に釣る → 釣り勝負（名人の大きさは決定的、結果は勝っても負けても良い。名人が指で大きさを示す）→ 思い出の魚（絵を見せる。最も希少な魚）→ 技を教わる（`Game.Flags` に `quest.fishing_master.technique.<playerId>` を立て、餌を渡す）→ 釣りを続ける理由。
+  2. **釣り名人**（§9.3）：一緒に釣る → 釣り勝負（名人の大きさは決定的、結果は勝っても負けても良い。名人が指で大きさを示す）→ 思い出の魚（絵を見せる。最も希少な魚）→ 技を教わる（`Game.Flags` に `quest.fishing_master.technique.<playerId>` を立て、`IFishingService.GrantTechnique` で釣りの技として覚えさせ、餌を渡す）→ 釣りを続ける理由。
+     - 対応表（`QuestFishingTechniques`）：名人の竿さばきのこつ（`fishing_master.rod_knack`）→ 釣りの「魚の誘導 `Guide`」（無ければ `LineHandling` → `MasterSecret` → 釣り側の最初の技）。`IFishingService.TechniqueIds` にある技から選ぶ。
+     - リモートのゲストには釣りモジュールが本人の端末へ届ける。さらに各端末が自分のフラグ（ゲストはホストから同期されたフラグ）を見て、まだなら自分で覚える（既存セーブのフラグもロード後に反映。釣り側は覚えていれば何もしない）。
   3. **料理人になりたい住民**（住民仕様 §10。Cook 以外の生活感系の住民を優先）：練習作をくれる → 材料（作物＋魚の2目標）→ 味見（喜ぶ/首を振るで分岐。首を振るともう一度材料から）→ 広場で料理会（行事）→ 夢（自分の店）。材料を渡すと、資料ボックスに「材料を抱えて調理場へ急いだ」という観察事実（レシピの手掛かり）。不参加でも自分で材料を手に入れて進む。
   4. **旅に憧れる小さな住民**（`Traveler`/`Child`/星の子系）：宇宙船を見に来る → 一緒に宇宙船まで行く（行動そのものが目的：§5.2 例外）→ 光る物（`glowing` タグ、無ければ宝石）→ 星の光帯の夜に高台へ（出なければ夜空を見に誘う）→ 「いつか星へ行く」と宇宙船の絵をくれる。
   5. **宇宙船の修理屋の夢**（ロケット仕様 §14）：宇宙船に夢中 → 金属集め → 精密な部品 → 工房に小さな宇宙船の模型（見に行く）→ 修理が半分以上進むと「いつか空へ」と修理部品（`PartConnectorKit`）をくれる。修理の必須条件にはしない。
@@ -85,7 +88,6 @@
 ## 未実装・簡略化した内容
 - 住民同士の関係（友達）を取得する契約が無いため、誕生日に集まる住民は「家の近い住民」、青い花の友達は決定的な選択【仮】。
 - 依頼の対象選びの「到達階」は、掲示板ではホストを基準にしている【仮】。
-- 釣り名人の技は `Game.Flags` のフラグと餌の贈り物のみ（釣りの性能への反映は Fishing 側の対応が必要）。
 - 料理人を目指す住民の「転職」は契約が無いため、夢の発話と屋台の飾り（生活の変化）で表現。
 - 「ほかの住民から聞く」入口は簡易（困っている住民の名前と必要な物を伝え、指さす）。商店の常連の要望（§3）・村の共同作業・釣り大会・収穫祭（§13【未決定】）は未実装。
 - 荷物を運ぶのをやめる操作は無い（その日のうちに住民が片付ける）。
@@ -100,6 +102,7 @@
 - 話しかけた時のお願い（`GetRequestTalk`）と話しかけメニュー（`GetOptions`）の呼ばれる順番（先にメニューが作られると、初回は身振りの選択肢が出ない。G の身振りメニューでは常に返事できる）。
 - 1日の依頼数・報酬額・期限・お手伝いの発生頻度などのバランス、行事の時間帯と住民の移動（`RequestGoTo`）の見え方。
 - 青い花の住民が主人公の店で青い花を買う挙動（`IShopService.ResidentVisit` を直接呼ぶ）。
+- 釣り名人に技を教わった時（ソロ・ホスト・ゲスト）に「技『魚の誘導』を覚えた！」が1回だけ出て、釣りの釣果帳の「覚えた技」に載るか。既存セーブ（フラグだけある）をロードした時に技が付くか。
 
 ## 他モジュールとの連携点
 ### 呼ぶ契約
@@ -108,7 +111,8 @@
 - `ISpeechService`：`Render`（掲示板の紙）、`ResidentName`（署名）、`CreateRecord`（掲示板・告知の記録）
 - `IManepiService.LeaveMessage("plaza", …)`（行事の告知）
 - `ITabletService`：`RegisterApp`、`SaveVoiceCard`、`AddMaterial`、`RecordResidentObservation`、`GetPlayerGloss`、`ShowGlossOverlay`
-- `IFishingService` / `IMiningService` / `IFarmService` / `ICreatureService`（対象選び、`IsSpeciesDiscovered`、`GrantCreature`）
+- `IFishingService` / `IMiningService` / `IFarmService` / `ICreatureService`（対象選び、`IsSpeciesDiscovered`、`GrantCreature`）。`IFishingService.TechniqueIds` / `GrantTechnique`（釣り名人に教わった技）
+- 依頼の達成・贈り物などホストで起きた事実のゲスト本人の住民辞典への記録は、Tablet が `QuestStateChangedEvent` / `GiftGivenEvent` から本人へ転送する（依頼帳・資料ボックスへの記録は、もともと本人の端末で行っている）。
 - `IShopService.ResidentVisit`（青い花）、`IHousingService.AddFurnitureToResidentHome`、`IRocketService`（位置・修理状況・`IsDeviceRepaired`）、`IWeatherService.Current`
 ### 発行するイベント
 - `QuestStateChangedEvent`（依頼の状態変化。お手伝いは `QuestId="help:<種類>"`、物語の完了は `"story:<id>"`）
@@ -124,7 +128,7 @@
 - `PointAt` の対象に、住民ID・施設IDのほか特別な文字列 `"rocket"` `"hill"` `"cart"` `"river"` を使う（向きの演出用。分からなければ無視してよい）。
 - `RequestGoTo` の理由タグは `quest.*` / `story.*`。
 - `AddMemory` の kind：`quest_done` `quest_accepted` `solved_self` `helped` `gift` `birthday_gift` `received_delivery` `delivered_for_me` `fished_together` `fishing_contest` `taught_technique` `watched_sky_together` `event_*` など。
-- `Game.Flags`：`quest.fishing_master.technique.<playerId>`（釣り名人に技を教わった）。
+- `Game.Flags`：`quest.fishing_master.technique.<playerId>`（釣り名人に技を教わった。技そのものは釣りモジュールの技としても覚える）。
 
 ## 調整用の仮数値
 すべて `QuestTuning.cs`（依頼数・期限・手掛かりの確率・報酬・掲示板・お手伝いの頻度・行事の時間帯・誕生日の周期・物語の日数・修理の手掛かり表）。

@@ -603,8 +603,11 @@ namespace Uchujin.Quests
                     break;
                 case "teach":
                     if (st.stage != 3) return;
-                    // 教わった技は、名人が引っ越した後も使える（§14）。釣りモジュールはこのフラグを参照できる
-                    sys.Game.Flags.Set("quest.fishing_master.technique." + ctx.IssuerId, 1);
+                    // 教わった技は、名人が引っ越した後も使える（§14）。
+                    // 印は Game.Flags に残し、技そのものは釣りモジュールの技（PlayerProfile＝持ち歩く技能）として覚えさせる
+                    //（対応表は QuestFishingTechniques。リモートのゲストには釣りモジュールが本人の端末へ届ける）
+                    sys.Game.Flags.Set(QuestSystem.FishingTechniqueFlagPrefix + ctx.IssuerId, 1);
+                    sys.GrantFishingTechnique(ctx.IssuerId);
                     var bait = QuestCatalog.ByCategory(ItemCategory.Bait);
                     if (bait.Count > 0) ctx.GiveItem(new ItemStack(bait[0], 10), "story.fishing_master");
                     sys.Memory(st.residentId, "taught_technique", ctx.IssuerId, null, null, 0.8f);

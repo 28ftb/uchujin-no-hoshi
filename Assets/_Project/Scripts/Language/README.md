@@ -60,7 +60,9 @@
 
 ### マルチ（マルチ仕様 §13、宇宙語仕様 §12, §14.3）
 - 同じシード＋同じ `languageGenVersion` なら同じ宇宙語。Planet スコープに生成バージョンと**言語の指紋**を保存し、ロード時・ゲスト受信時に一致しなければ警告ログ。
-- **発話の中継**：ホストの `Speak` は意味データを Planet スコープの短いバッファ（最新8件）に積み `MarkDirty`。ゲストは `RestoreState(Planet)` で新しい通し番号の発話を自分の規則で変換し、吹き出し・記録・イベントにする（自分宛てではないので Overheard 扱い）。参加直後・ロード直後の過去分は表示しない。
+- **発話の中継**：ホストで `Speak` された発話（`relayToGuests==true` の時だけ。4引数版は true）は、意味データ（`SpeechRelayEntry`：話者・種別・チャンネル・位置・`Utterance`）を一時メッセージ `WorldAuthority.BroadcastTransient("speech.relay", json)` で送る（セーブしない・状態スナップショットには載せない）。ゲストは `RegisterContent` で登録した受信処理で自分の規則で変換し、吹き出し・（聞こえる距離なら）記録・イベントにする。会話（Direct / Overheard）は `Utterance.addresseeId` がローカルのプレイヤーなら Direct、それ以外は Overheard。呼びかけ・看板・手紙・マネピの再現は元のチャンネルのまま。ホストに届いた "speech.relay"（ゲストから）は無視する。
+- 各端末がそれぞれ生成する発話（独り言・立ち話など）は `Speak(..., relayToGuests: false)` で中継しない（二重表示を避ける）。
+- 旧版の Planet 状態（セーブ）にある中継バッファ（`relaySerial` / `relay`）は読み込み時に無視される（JsonUtility は型に無いフィールドを読み飛ばす）。
 - 辞書の自動配布はしない（本モジュールは辞書を持たない）。会話ログは各プレイヤーの PlayerPlanetKnowledge。
 
 ### 開発者向け検証
@@ -71,7 +73,7 @@
 - **宇宙文字の表示経路**：`ISpeechService` に `RenderScript` が無いため、他モジュールが看板を宇宙文字で表示するには `Speak(u, 看板Transform, SpeechChannel.Sign, "sign")` か `Replay` を使う必要がある（下記「コアへの追加要望」）。
 - **吹き出しクリックと道具の使用の重なり**：コアの `PlayerInteractor` が IMGUI のクリックを考慮しないため、吹き出しの単語を左クリックすると道具も使われる可能性がある。判定関数 `LanguageSystem.IsPointerOverBubble(screenPos)` は用意済み（コアへの追加要望）。
 - **設定の置き場所**：コアの設定画面に追加口が無いため、タブレットのアプリ「声と文字」で切り替える（タブレットが無い場合は既定値：声オン、読み方オン）。
-- **発話の中継**は星の状態スナップショットに相乗りしているため、発話のたびに "language" キーの状態（数KB）が送られる。軽量な一時イベント送信の口がコアにあれば置き換えたい。
+- 読み込み中のゲストに届いた中継発話は、読み込み完了後に届いた順でまとめて表示される（古い発話を捨てる時刻判定はしていない）。
 - 動的語どうしの偶然の衝突は「先に使われた方が勝つ」ため、ホストの記録（bumps）が届く前にゲストが独自にその語を使うと一時的に綴りがずれることがある（確率はごく低い。届いた時点でホストに合わせる）。
 - 多義語の意図的な統合（同音異義語）は採用していない（§4.2 未決定。偶然の衝突は全て回避）。
 - 敬語・話し方の個性（§5.2 未決定）は未実装。住民ごとの違いは発話の内容・量・声の高さで表す想定。
@@ -82,12 +84,13 @@
 - 記号・宇宙文字がフォント（Yu Gothic UI / Hiragino / Noto / Arial）で文字化けしないか（特に図形記号セット ◇☆∀∇⌒♯ など、英語環境の Windows/Mac）。
 - 声の聞こえ方（音量、うるささ、話者ごとの高さの差、Overheard の頻度とのバランス、AudioClip の生成負荷）。
 - 吹き出しの表示時間、聞こえる距離 14m が村の広さ・カメラ距離に対して適切か。
-- ゲストでの中継吹き出しの遅延・頻度、スナップショットのサイズ。
+- ゲストでの中継吹き出しの遅延・頻度（一時メッセージ "speech.relay"）、Direct / Overheard の振り分け（`addresseeId` を設定している呼び出し側の確認）。
 - 会話ログ300件（meaning 込み）のセーブサイズ。
 - F12 デバッグ窓の表示（UNITY_EDITOR のみ）。
 
 ## 他モジュールとの連携点
 - **実装する契約**：`ISpeechService`（Render / RenderWord / ResidentName / PlanetName / Speak / CreateRecord / Replay / RecentRecords / GetRecord / RenderNumber）。
+- **一時メッセージ**：チャンネル `"speech.relay"`（ホスト→ゲスト。受信処理は `RegisterContent` で登録）。
 - **呼ぶ契約**：`ITabletService`（`ShowGlossOverlay`、`GetPlayerGloss`、`RegisterApp`）、`IResidentDirectory`（話者の色・系統・中継時の Transform、住民名の先行生成）、`ICreatureService`（種IDの先行生成）、`IWeatherService`（記録の天気）、`ItemRegistry`（アイテム語の先行生成・差し出す物の色）。
 - **発行するイベント**：`UtteranceSpokenEvent`（ローカルプレイヤーが聞いた時。Replay では発行しない）、`DictionaryLookupRequestEvent`（吹き出しの単語クリック）。
 - **購読するイベント**：なし。
@@ -101,7 +104,7 @@
   - `internalId` / `meaning` はプレイヤーに表示しないこと（デバッグ窓を除く）。
 
 ## 調整用の仮数値の場所
-- `LanguageSystem`：聞こえる距離、ログ件数、未聴キャッシュ、中継件数、吹き出しの表示時間。
+- `LanguageSystem`：聞こえる距離、ログ件数、未聴キャッシュ、中継チャンネル名（`SpeechRelayChannel`）、吹き出しの表示時間。
 - `SpeechBubbleOverlay`：吹き出しの幅・文字サイズ・色・余白。`SpeechSymbols`：表情・身振りの記号の対応。
 - `SpeechVoice`：サンプルレート、音節の長さ、語・文の間、音量距離、プール数。
 - `Phonology`：子音・母音の候補、語末子音候補、音節構造・単語長・傾向の確率（`GenerateV1` 内）。
@@ -130,6 +133,6 @@
    ```
    （`SpeechBubbleOverlay.IsPointerOver(Vector2)` が同じシグネチャで実装済み。インターフェース追加後に `: IUIOverlay, IPointerBlockingOverlay` とするだけで有効になる。）
 3. **設定画面への追加口**（声のオン／オフ等を Esc メニューの設定にも出したい）：`public static readonly List<Action> UIManager.ExtraSettingsDrawers` を `PauseMenuWindow.DrawSettings` の末尾で呼ぶ。
-4. **ホスト→ゲストの一時イベント送信**（発話の中継をスナップショットから外し通信量を減らす）：`INetworkBridge.BroadcastTransient(string channel, string json)` と受信ハンドラの登録口（`WorldAuthority.RegisterTransient(string channel, Action<string> handler)`）。
+4. ~~ホスト→ゲストの一時イベント送信~~（対応済み：`WorldAuthority.RegisterTransientHandler` / `BroadcastTransient`。発話の中継はこれへ移行）。
 5. **UtteranceRecord に `public List<int> sentenceStarts`**（現在は text と tokens の照合で文区切りを復元している）。
-6. **Utterance に宛先（`public string addresseeId`）**：中継先で「自分に向けた言葉か」を判定でき、Direct / Overheard を正しく分けられる。
+6. ~~Utterance に宛先~~（対応済み：`Utterance.addresseeId`。中継先の Direct / Overheard の判定に使用）。

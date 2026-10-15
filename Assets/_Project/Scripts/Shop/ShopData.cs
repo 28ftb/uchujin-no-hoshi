@@ -392,4 +392,21 @@ namespace Uchujin.Shop
     {
         public long lastReviewedTotalMinutes;
     }
+
+    /// <summary>
+    /// ホストが締めた日次集計のうち、委託した持ち主（ゲスト）に関係する分（一時メッセージ <see cref="ShopSystem.DaySummaryChannel"/>。保存しない）。
+    /// ゲストの端末の集計はスナップショットの同期待ちで締めの直前の売上が欠けることがあるため、ホストの確定値を送る。
+    /// </summary>
+    [Serializable]
+    public class ShopDaySummaryMessage
+    {
+        public int day;
+        /// <summary>その持ち主の委託品の売上（合計額）。</summary>
+        public int revenue;
+        /// <summary>その持ち主の委託品が売れた個数。</summary>
+        public int sold;
+        /// <summary>店全体の来店者数・マネピの伝言数（参考）。</summary>
+        public int visitors;
+        public int manepiMessages;
+    }
 }

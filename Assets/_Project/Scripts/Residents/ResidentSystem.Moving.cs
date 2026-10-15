@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Uchujin.Core;
-using Uchujin.Core.UI;
 using Uchujin.World;
 using UnityEngine;
 
@@ -173,7 +172,7 @@ namespace Uchujin.Residents
             EventBus.Publish(new ResidentMoveOutDecidedEvent { ResidentId = r.Id, PlannedDay = r.State.moveOutDay });
             if (r.State.planDay == day) PlanDay(r, day);
             RefreshBoxes();
-            MarkDirty();
+            MarkDirtyNow(); // 荷造りの箱がすぐ見えるように
             return true;
         }
 
@@ -224,7 +223,7 @@ namespace Uchujin.Residents
             }
             if (r.State.planDay == Today) PlanDay(r, Today);
             RefreshBoxes();
-            MarkDirty();
+            MarkDirtyNow();
         }
 
         /// <summary>出発の日の予定：荷物を運び出し、友達に見送られて村の外へ。</summary>
@@ -299,19 +298,21 @@ namespace Uchujin.Residents
             if (meta.nextMoveInDay < 0 || meta.nextMoveInDay > day + delay) meta.nextMoveInDay = day + delay;
             EnsureEssentialJobs();
             AssignWorkplaceOwners();
+            ClearIndoorProxyOf(r);
             SyncAvatar(r);
             RefreshBoxes();
-            OnLocalSawMoveOut(r);
+            RecordMoveOutObservations(r, day);
             EventBus.Publish(new ResidentMovedOutEvent { ResidentId = r.Id, Day = day });
-            MarkDirty();
+            MarkDirtyNow();
         }
 
-        private void OnLocalSawMoveOut(Resident r)
+        /// <summary>引っ越していった日を、その住民を知っていたプレイヤー全員の住民辞典へ（ホスト。不在のプレイヤーには参加時に）。</summary>
+        private void RecordMoveOutObservations(Resident r, int day)
         {
-            var local = Game.LocalPlayer;
-            if (local == null || !r.Knows(local.PlayerId)) return;
-            RecordObservation(r, "moved_out", string.Format("{0}日目に村から引っ越していった", Today),
-                string.Format("Moved away from the village on day {0}", Today));
+            string ja = string.Format("{0}日目に村から引っ越していった", day);
+            string en = string.Format("Moved away from the village on day {0}", day);
+            foreach (var b in new List<PlayerBond>(r.State.bonds))
+                if (b != null && b.met) RecordObservationFor(b.playerId, r, "moved_out", ja, en);
         }
 
         // ---------------- 手紙（引っ越した住民から） ----------------
@@ -321,46 +322,13 @@ namespace Uchujin.Residents
             var st = r.State;
             st.lettersSent++;
             st.nextLetterDay = st.lettersSent < 2 ? day + StableHash.Int(seed, "letter2." + r.Id, 12, 21) : -1;
-            var speech = Game.Service<ISpeechService>();
             bool any = false;
-            foreach (var b in st.bonds)
+            foreach (var b in new List<PlayerBond>(st.bonds))
             {
-                if (b.friendship < ResidentTuning.LetterFriendship || !b.met) continue;
-                var u = ResidentLines.Letter(r, b.playerId, this);
-                UtteranceRecord rec = null;
-                try { rec = speech?.CreateRecord(u, SpeechChannel.Letter, "resident", Vector3.zero); }
-                catch (System.Exception e) { Debug.LogException(e); }
-                var stack = new ItemStack(SharedItemIds.Letter, 1) { data = rec != null ? rec.recordId : null };
-                var player = Game.Players.Get(b.playerId);
-                if (player != null && player.IsLocal)
-                {
-                    player.GiveOrDrop(stack, "resident_letter");
-                    var tablet = Game.Service<ITabletService>();
-                    if (tablet != null)
-                    {
-                        var mat = new TabletMaterial
-                        {
-                            id = "letter." + r.Id + "." + day,
-                            kind = TabletMaterialKind.Letter,
-                            titleJa = "手紙",
-                            titleEn = "Letter",
-                            factJa = string.Format("{0}日目に届いた手紙。引っ越していった住民から。", day),
-                            factEn = string.Format("A letter that arrived on day {0}, from a resident who moved away.", day),
-                            day = day,
-                            minuteOfDay = MinuteOfDay,
-                            linkedRecordId = rec != null ? rec.recordId : null,
-                            linkedResidentId = r.Id
-                        };
-                        mat.tags.Add("letter");
-                        try { tablet.AddMaterial(mat); }
-                        catch (System.Exception e) { Debug.LogException(e); }
-                    }
-                    UIManager.Toast(Loc.T("手紙が届きました", "A letter has arrived"));
-                }
-                else
-                {
-                    WorldAuthority.Bridge?.GrantItemToRemote(b.playerId, stack, "resident_letter");
-                }
+                if (b == null || b.friendship < ResidentTuning.LetterFriendship || !b.met) continue;
+                // ローカルのプレイヤーには直接、接続中のリモートのプレイヤーには手紙の品物と資料ボックスの記録を届ける。
+                // 接続していないプレイヤーには、次に参加した時に届ける（OnPlayerJoined）。
+                DeliverLetter(r, b.playerId, day, MinuteOfDay);
                 any = true;
             }
             // 村の友達へは伝言広場のマネピ経由で近況が届く（§11・タブレット §9.2）
@@ -449,7 +417,7 @@ namespace Uchujin.Residents
             SyncAvatar(nr);
             RefreshBoxes();
             EventBus.Publish(new ResidentMovedInEvent { ResidentId = nr.Id, Day = day });
-            MarkDirty();
+            MarkDirtyNow();
         }
 
         /// <summary>必須サービス職が必ず誰かに担われている状態を保つ（不変条件の修復）。</summary>

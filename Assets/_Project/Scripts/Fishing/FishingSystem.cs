@@ -21,6 +21,9 @@ namespace Uchujin.Fishing
         public override string SaveKey => "fishing";
         public override int DailyUpdateOrder => 300;
 
+        /// <summary>技を本人の端末へ届ける一時メッセージのチャンネル（<see cref="TechniqueGrantMessage"/>）。</summary>
+        public const string TechniqueChannel = "fishing.technique";
+
         public FishSpawnModel Spawn { get; } = new FishSpawnModel();
         public WorldLayout Layout => Game != null ? Game.Layout : null;
         public int CurrentDay => Clock != null ? Clock.Day : 1;
@@ -61,6 +64,7 @@ namespace Uchujin.Fishing
             WorldAuthority.Register<ReportCatchCommand>(HandleReportCatch);
             WorldAuthority.Register<UpgradeRodCommand>(HandleUpgradeRod);
             WorldAuthority.Register<LessonLearnedCommand>(HandleLessonLearned);
+            WorldAuthority.RegisterTransientHandler(TechniqueChannel, OnTechniqueMessage);
         }
 
         public override void PreparePlanet(PlanetContext ctx)
@@ -74,8 +78,8 @@ namespace Uchujin.Fishing
 
         public override void OnNewPlanet(PlanetContext ctx)
         {
-            // 最初の星の新規ゲームでは技能を初期化する（次の星へ進む場合は持ち越す）。
-            if (ctx.Planet.planetIndex <= 1 && string.IsNullOrEmpty(ctx.Planet.previousWorldId) && LocalPlayer != null)
+            // 新規ゲーム、または次の星へ「技能を引き継がない」を選んだ時は技能を初期化する。
+            if (ctx.ResetSkills && LocalPlayer != null)
                 profiles[LocalPlayer.PlayerId] = new FishingProfileData { playerId = LocalPlayer.PlayerId };
         }
 
@@ -172,6 +176,62 @@ namespace Uchujin.Fishing
         public bool IsFishing(string playerId) =>
             session != null && session.IsActive && session.Player != null && session.Player.PlayerId == playerId;
 
+        /// <summary>技の一覧（ID は <see cref="FishingTechnique"/> の名前。例："LineHandling"）。</summary>
+        public IEnumerable<string> TechniqueIds
+        {
+            get { foreach (var t in TechniqueInfo.All) yield return t.ToString(); }
+        }
+
+        /// <summary>技の名前（主人公の呼び名。UI 言語で返す）。不明な ID は null。</summary>
+        public string GetTechniqueName(string techniqueId) =>
+            TryParseTechnique(techniqueId, out var t) ? TechniqueInfo.Name(t) : null;
+
+        /// <summary>
+        /// 技を覚えさせる（釣り名人のクエストなど）。技は PlayerProfile＝本人の端末が正本なので、
+        /// ローカルのプレイヤーならその場で覚え（既に覚えていれば false）、リモートのプレイヤーなら一時メッセージで本人へ届けて
+        /// 受信側で覚える（相手の習得状況はこちらで分からないため、送った時点で true）。
+        /// </summary>
+        public bool GrantTechnique(string playerId, string techniqueId)
+        {
+            if (!TryParseTechnique(techniqueId, out var t)) return false;
+            string local = LocalId;
+            if (string.IsNullOrEmpty(playerId) || playerId == local) return LearnTechnique(local, t);
+            if (!WorldAuthority.IsMultiplayer) return false;
+            WorldAuthority.SendTransient(playerId, TechniqueChannel, JsonUtility.ToJson(new TechniqueGrantMessage { technique = t.ToString() }));
+            return true;
+        }
+
+        private string LocalId => LocalPlayer != null ? LocalPlayer.PlayerId : (Game != null ? Game.LocalPlayerId : null);
+
+        internal static bool TryParseTechnique(string id, out FishingTechnique technique)
+        {
+            technique = FishingTechnique.LineHandling;
+            if (string.IsNullOrEmpty(id)) return false;
+            foreach (var t in TechniqueInfo.All)
+            {
+                if (string.Equals(t.ToString(), id.Trim(), System.StringComparison.OrdinalIgnoreCase))
+                {
+                    technique = t;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>ホストから届いた技の付与（自分の端末で覚える）。</summary>
+        private void OnTechniqueMessage(string fromPlayerId, string json)
+        {
+            string local = LocalId;
+            // 正本はホスト：ホスト（権威側）はゲストからの付与を受け付けない（自分宛ての直接呼び出しは除く）
+            if (WorldAuthority.IsAuthority && fromPlayerId != local) return;
+            if (string.IsNullOrEmpty(json)) return;
+            TechniqueGrantMessage m = null;
+            try { m = JsonUtility.FromJson<TechniqueGrantMessage>(json); }
+            catch (System.Exception e) { Debug.LogException(e); }
+            if (m == null || !TryParseTechnique(m.technique, out var t)) return;
+            LearnTechnique(local, t);
+        }
+
         // =====================================================================
         // 技能（PlayerProfile）
         // =====================================================================
@@ -189,10 +249,19 @@ namespace Uchujin.Fishing
 
         public void LearnTechnique(PlayerState player, FishingTechnique t)
         {
-            var p = GetProfile(player.PlayerId);
-            if (p.Knows(t)) return;
+            if (player == null) return;
+            LearnTechnique(player.PlayerId, t);
+        }
+
+        /// <summary>技を覚える（新しく覚えたら true。覚えた時は主人公の言語でトースト）。</summary>
+        public bool LearnTechnique(string playerId, FishingTechnique t)
+        {
+            var p = GetProfile(playerId);
+            if (p.Knows(t)) return false;
             p.techniques.Add(t.ToString());
-            UIManager.Toast(Loc.Format("技「{0}」を覚えた！", "Learned the technique \"{0}\"!", TechniqueInfo.Name(t)), 5f);
+            if (string.IsNullOrEmpty(playerId) || playerId == LocalId)
+                UIManager.Toast(Loc.Format("技「{0}」を覚えた！", "Learned the technique \"{0}\"!", TechniqueInfo.Name(t)), 5f);
+            return true;
         }
 
         // =====================================================================

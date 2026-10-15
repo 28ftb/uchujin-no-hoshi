@@ -28,6 +28,22 @@ namespace Uchujin.Residents
         internal Vector3 lastWrittenPos;
         internal bool hasWrittenPos;
 
+        // ---- 家の中の代理の姿（各端末のローカル。保存・同期しない） ----
+        /// <summary>家の中などで本体の代わりに表示している姿（Housing が作る）。設定中は本体を隠す。</summary>
+        internal Transform indoorProxy;
+        internal string indoorAreaId;
+        /// <summary>代理を自動で解除する時刻（総分）。</summary>
+        internal long indoorUntil;
+        /// <summary>代理を設定した時に一時的な行き先（RequestGoTo）があったか。行き先が終われば解除する。</summary>
+        internal bool indoorByGoTo;
+        /// <summary>代理を設定した時に本体がいる（向かっている）場所。本体がここから離れたら（予定が変わって出かけた）解除する。</summary>
+        internal Vector3 indoorAnchor;
+        /// <summary>ゲスト：ホストで家の中の代理を表示中のエリア（空なら外。参考情報）。</summary>
+        internal string netIndoorArea;
+
+        /// <summary>代理の姿を表示中か（代理が破棄されていれば false）。</summary>
+        public bool HasIndoorProxy => indoorProxy != null;
+
         public Resident(ResidentProfile profile, ResidentState state, bool regenerable)
         {
             Profile = profile;
@@ -40,8 +56,12 @@ namespace Uchujin.Residents
         public AlienLineage Lineage => Profile.lineage;
         public ResidentJob Job => State.job;
         public bool IsActive => State.active;
-        public Vector3 Position => Avatar != null ? Avatar.transform.position : new Vector3(State.px, State.py, State.pz);
-        public Transform Transform => Avatar != null ? Avatar.transform : null;
+        /// <summary>今いる場所（家の中の代理を表示中なら代理の位置）。身振りの対象・吹き出し・目撃の判定に使う。</summary>
+        public Vector3 Position => HasIndoorProxy ? indoorProxy.position : BodyPosition;
+        /// <summary>話す時の吹き出しの位置など（家の中の代理を表示中なら代理）。</summary>
+        public Transform Transform => HasIndoorProxy ? indoorProxy : (Avatar != null ? Avatar.transform : null);
+        /// <summary>本体（村を歩くアバター）の位置。生活AIの移動・到着の判定はこちらを使う。</summary>
+        public Vector3 BodyPosition => Avatar != null ? Avatar.transform.position : new Vector3(State.px, State.py, State.pz);
         public ResidentActivity Activity => State.activity;
         public int Money => State.money;
         public string HomeFacilityId => State.homeFacilityId;

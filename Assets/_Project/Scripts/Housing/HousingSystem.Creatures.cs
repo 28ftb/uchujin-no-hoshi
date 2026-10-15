@@ -264,15 +264,13 @@ namespace Uchujin.Housing
             var creatures = Game?.Service<ICreatureService>();
             EnsureCreatureRoot();
             if (creatures == null || creaturesRoot == null) return;
-            var owners = new HashSet<string> { HouseOwnerId };
-            foreach (var p in Game.Players.All) owners.Add(p.PlayerId);
             var alive = new HashSet<string>();
-            foreach (var owner in owners)
+            // この星にいる全員分（今いないゲストが家に預けた子も含む）
+            IReadOnlyList<CreatureView> all = null;
+            try { all = creatures.GetAllOnPlanet(); } catch (Exception e) { Debug.LogException(e); }
+            if (all != null)
             {
-                IReadOnlyList<CreatureView> owned = null;
-                try { owned = creatures.GetOwned(owner); } catch (Exception e) { Debug.LogException(e); }
-                if (owned == null) continue;
-                foreach (var v in owned)
+                foreach (var v in all)
                 {
                     PlacedFurniture habitat = null;
                     if (v.Placement == CreaturePlacement.Habitat)
@@ -347,6 +345,33 @@ namespace Uchujin.Housing
                 changed = true;
             }
             if (changed) MarkDirty();
+        }
+
+        /// <summary>
+        /// ゲスト：持ち歩いている（同行・ケージの）子を家・住処に置く前に、ICreatureService.SetPlacement で個体データごと
+        /// ホストの星へ預ける（Creatures が PlaceCreatureCommand を送る。コマンドは順序どおりホストで実行されるので、
+        /// 続く AssignCreatureCommand の時にはホストがその子を知っている）。預けられなかったら false（配置コマンドは送らない）。
+        /// ソロ・ホストではコマンド処理の SetPlacementFor がその場で置くので何もしない。
+        /// </summary>
+        internal static bool PrepareCreatureForPlanet(string uid, CreaturePlacement placement, string targetId)
+        {
+            if (!WorldAuthority.IsGuest || string.IsNullOrEmpty(uid)) return true;
+            var cs = Game.Instance != null ? Game.Instance.Service<ICreatureService>() : null;
+            if (cs == null) return false;
+            CreatureView v = null;
+            try { v = cs.Get(uid); } catch (Exception e) { Debug.LogException(e); }
+            if (v == null) return false;
+            if (v.Placement != CreaturePlacement.Companion && v.Placement != CreaturePlacement.Storage) return true; // もう星にいる
+            try { return cs.SetPlacement(uid, placement, targetId); }
+            catch (Exception e) { Debug.LogException(e); return false; }
+        }
+
+        /// <summary>住処・家の庭に置く（ゲストは先に預けてから配置コマンドを送る）。</summary>
+        internal static void SubmitAssignCreature(string uid, string mode, string instanceId)
+        {
+            if (mode == "habitat" && !PrepareCreatureForPlanet(uid, CreaturePlacement.Habitat, instanceId)) return;
+            if (mode == "home" && !PrepareCreatureForPlanet(uid, CreaturePlacement.Home, HousingConst.LocHouse)) return;
+            WorldAuthority.Submit(new AssignCreatureCommand { creatureUid = uid, instanceId = instanceId, mode = mode });
         }
 
         /// <summary>その生物が今この家具（住処）に住んでいるか。</summary>

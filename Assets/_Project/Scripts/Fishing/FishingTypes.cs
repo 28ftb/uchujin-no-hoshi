@@ -211,4 +211,16 @@ namespace Uchujin.Fishing
         public string residentId;
         public string technique;
     }
+
+    // ---------------- 一時メッセージ（保存しない） ----------------
+
+    /// <summary>
+    /// 技を本人へ届ける（チャンネル <see cref="FishingSystem.TechniqueChannel"/>）。
+    /// 技は PlayerProfile（本人の端末が正本）なので、ホストで決まった付与（釣り名人のクエスト等）はこれで本人に覚えさせる。
+    /// </summary>
+    [Serializable]
+    public class TechniqueGrantMessage
+    {
+        public string technique;
+    }
 }

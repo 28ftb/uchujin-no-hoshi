@@ -55,7 +55,8 @@ namespace Uchujin.Residents
         internal bool CanTalk(Resident r, PlayerState player)
         {
             if (r == null || player == null || !player.IsLocal) return false;
-            if (r.State.hidden || r.State.activity == ResidentActivity.Sleeping) return false;
+            // 家の中の代理を表示中は本体が隠れていても話せる（OpenConversation）
+            if (r.State.hidden && !r.HasIndoorProxy || r.State.activity == ResidentActivity.Sleeping) return false;
             return UIManager.Find<ResidentConversationWindow>() == null;
         }
 
@@ -77,7 +78,7 @@ namespace Uchujin.Residents
                 r.Avatar.LookAt(player.Position + Vector3.up);
                 var d = player.Position - r.Avatar.transform.position;
                 d.y = 0;
-                if (d.sqrMagnitude > 0.01f && IsAuthority) r.Avatar.transform.rotation = Quaternion.LookRotation(d);
+                if (d.sqrMagnitude > 0.01f && IsAuthority && !r.HasIndoorProxy) r.Avatar.transform.rotation = Quaternion.LookRotation(d);
             }
             var tablet = Game.Service<ITabletService>();
             if (firstMeet && tablet != null)
@@ -635,6 +636,8 @@ namespace Uchujin.Residents
             if (queue.Count > 0 && now >= nextTime)
             {
                 var u = queue.Dequeue();
+                // 主人公へ直接話す言葉（中継先では「自分に向けた言葉か」をこれで判定する）
+                if (string.IsNullOrEmpty(u.addresseeId)) u.addresseeId = Player.PlayerId;
                 var rec = Sys.Speak(Resident.Id, u, SpeechChannel.Direct);
                 lines.Add(new Line { rec = rec, u = u });
                 if (lines.Count > 12) lines.RemoveAt(0);
@@ -644,7 +647,7 @@ namespace Uchujin.Residents
                 lineScroll.y = 99999f;
             }
             if (closeAfterQueue && queue.Count == 0 && now >= nextTime) Close();
-            // 相手がいなくなった・離れすぎた
+            // 相手がいなくなった・離れすぎた（家の中の代理を表示中は代理の位置で測る：Resident.Position）
             if (!Resident.State.active && !Resident.IsVisitingFormer || Resident.Avatar == null || ResidentUtil.FlatDistance(Resident.Position, Player.Position) > 10f)
                 Close();
         }

@@ -74,6 +74,7 @@ namespace Uchujin.Tablet
             PhotoCamera = new TabletCamera(this);
             overlay = new TabletOverlay(this);
             WorldAuthority.Register<ManepiDeleteMessageCommand>(HandleDeleteMessage);
+            WorldAuthority.RegisterTransientHandler(RecordChannel, OnRecordMessage);
         }
 
         public override void OnNewPlanet(PlanetContext ctx)
@@ -139,6 +140,8 @@ namespace Uchujin.Tablet
             Know = new KnowledgeData();
             ManepiData = new ManepiPlanetData();
             LastHeard = null;
+            lastForwardKey = null;
+            forwardedMet.Clear();
             foreach (var a in builtinApps) (a as TabletAppBase)?.ResetState();
             TabletGui.ClearPhotoCache();
         }
@@ -273,38 +276,40 @@ namespace Uchujin.Tablet
             AddObservation(page, "moved_in", "また村で暮らし始めた", "Started living in the village again", null);
         }
 
+        // 以下の共有イベントの多くはホスト（コマンドを実行した側）でだけ発行される。
+        // 本人がリモートのゲストなら、ホストがその本人のタブレットへ転送する（TabletSystem.Remote.cs）。
+
         private void OnResidentTalked(ResidentTalkedEvent e)
         {
-            if (e.PlayerId != LocalId || string.IsNullOrEmpty(e.ResidentId)) return;
-            RecordResidentMet(e.ResidentId);
+            if (string.IsNullOrEmpty(e.ResidentId) || string.IsNullOrEmpty(e.PlayerId)) return;
+            if (e.PlayerId == LocalId) RecordResidentMet(e.ResidentId);
+            else ForwardMet(e.PlayerId, e.ResidentId);
         }
 
         private void OnGiftGiven(GiftGivenEvent e)
         {
-            if (e.PlayerId != LocalId || string.IsNullOrEmpty(e.ResidentId)) return;
+            if (string.IsNullOrEmpty(e.PlayerId) || string.IsNullOrEmpty(e.ResidentId)) return;
             string item = ItemRegistry.GetOrPlaceholder(e.ItemId).NameJa;
             string itemEn = ItemRegistry.GetOrPlaceholder(e.ItemId).NameEn;
-            var page = GetOrCreatePage(e.ResidentId);
-            AddObservation(page, "gift", $"{item}を贈った", $"Gave a {itemEn}", null);
+            ObserveFor(e.PlayerId, e.ResidentId, "gift", $"{item}を贈った", $"Gave a {itemEn}", null, -1, -1);
         }
 
         private void OnShopItemSold(ShopItemSoldEvent e)
         {
             if (string.IsNullOrEmpty(e.ResidentId)) return;
-            if (!string.IsNullOrEmpty(e.ShopOwnerId) && e.ShopOwnerId != LocalId) return;
+            // 持ち主（空・自分＝店主）へ。委託品なら委託した本人へ転送する
+            string owner = string.IsNullOrEmpty(e.ShopOwnerId) ? LocalId : e.ShopOwnerId;
             var def = ItemRegistry.GetOrPlaceholder(e.ItemId);
-            var page = GetOrCreatePage(e.ResidentId);
             // 商店の客観的な売上記録（タブレット仕様 §5.2「購入記録」）。好みの解釈は書かない。
-            AddObservation(page, "purchase",
+            ObserveFor(owner, e.ResidentId, "purchase",
                 $"商店で{def.NameJa}{QualityText(e.Quality)}を{Wallet.Format(e.Price)}で買った",
                 $"Bought {def.NameEn}{QualityText(e.Quality)} at the shop for {Wallet.Format(e.Price)}", null, e.Day, e.Minute);
         }
 
         private void OnQuestStateChanged(QuestStateChangedEvent e)
         {
-            if (e.Status != QuestStatus.Completed || e.PlayerId != LocalId || string.IsNullOrEmpty(e.ResidentId)) return;
-            var page = GetOrCreatePage(e.ResidentId);
-            AddObservation(page, "quest", "お願いごとをやり遂げた（依頼帳の記録）", "Completed a request (request log)", null);
+            if (e.Status != QuestStatus.Completed || string.IsNullOrEmpty(e.PlayerId) || string.IsNullOrEmpty(e.ResidentId)) return;
+            ObserveFor(e.PlayerId, e.ResidentId, "quest", "お願いごとをやり遂げた（依頼帳の記録）", "Completed a request (request log)", null, -1, -1);
         }
 
         private void OnUtteranceSpoken(UtteranceSpokenEvent e)
@@ -623,6 +628,7 @@ namespace Uchujin.Tablet
             if (k.diagramNodes == null) k.diagramNodes = new List<DiagramNode>();
             if (k.photos == null) k.photos = new List<PhotoInfo>();
             if (k.heardMessageIds == null) k.heardMessageIds = new List<string>();
+            if (k.receivedRecords == null) k.receivedRecords = new List<UtteranceRecord>();
             foreach (var e in k.dictionary) e.EnsureLists();
             foreach (var v in k.volumes)
             {

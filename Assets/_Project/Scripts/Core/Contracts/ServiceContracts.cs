@@ -23,6 +23,10 @@ namespace Uchujin.Core
         string PlanetName { get; }
         /// <summary>話す：頭上に吹き出しを出し、聞こえた範囲なら記録して UtteranceSpokenEvent を発行する。</summary>
         UtteranceRecord Speak(Utterance utterance, Transform speaker, SpeechChannel channel, string speakerKind = "resident");
+        /// <summary>
+        /// relayToGuests=false の時、ホストでもゲストへ中継しない（各端末がそれぞれ生成する独り言・立ち話など、二重表示を避けたい発話用）。
+        /// </summary>
+        UtteranceRecord Speak(Utterance utterance, Transform speaker, SpeechChannel channel, string speakerKind, bool relayToGuests);
         /// <summary>表示せずに記録だけ作る（マネピが預かる伝言、手紙、看板など）。</summary>
         UtteranceRecord CreateRecord(Utterance utterance, SpeechChannel channel, string speakerKind, Vector3 position);
         /// <summary>既存記録をもう一度吹き出し表示する（マネピの再生など）。原本は変えない。</summary>
@@ -114,6 +118,13 @@ namespace Uchujin.Core
         /// <summary>住民辞典に「観察できた事実」を記録（内部の好み・正解は書かない）。</summary>
         void RecordResidentObservation(string residentId, string factJa, string factEn, string linkedRecordId = null);
         void RecordResidentMet(string residentId);
+        /// <summary>
+        /// 特定のプレイヤーの資料ボックスへ記録する（マルチ：ホストで起きた事実をゲスト本人のタブレットへ届ける）。
+        /// playerId がローカルなら AddMaterial と同じ。linkedRecord を渡すと、その発話の原本も一緒に届く。
+        /// </summary>
+        void AddMaterialFor(string playerId, TabletMaterial material, UtteranceRecord linkedRecord = null);
+        /// <summary>特定のプレイヤーの住民辞典へ観察した事実を記録する（ローカルなら RecordResidentObservation と同じ）。</summary>
+        void RecordResidentObservationFor(string playerId, string residentId, string factJa, string factEn, string linkedRecordId = null);
         /// <summary>プレイヤー自身が辞書に書いた推測訳（無ければ null）。ゲームが正解へ書き換えることはない。</summary>
         string GetPlayerGloss(string surface);
         /// <summary>吹き出しに推測訳を併記する設定。</summary>
@@ -295,6 +306,15 @@ namespace Uchujin.Core
         void HoldForCutscene(string residentId, bool hold);
         /// <summary>住民を即座に移動する（AIの内部位置も同期）。</summary>
         void Warp(string residentId, Vector3 position, float yawDegrees);
+        /// <summary>
+        /// 家の中などで住民の代わりに表示する姿（代理）を設定する。設定中は本体を隠し、発話の吹き出し・身振りの対象・
+        /// IResidentInfo.Position は代理の位置になる。untilMinuteOfDay を過ぎるか ClearIndoorProxy で元に戻る。
+        /// 代理の GameObject の [E] は OpenConversation を呼ぶこと。
+        /// </summary>
+        void SetIndoorProxy(string residentId, Transform proxy, string areaId, int untilMinuteOfDay);
+        void ClearIndoorProxy(string residentId);
+        /// <summary>住民との会話ウィンドウを開く（代理の姿などから話しかける時）。</summary>
+        void OpenConversation(string residentId, PlayerState player);
         /// <summary>住民同士の親しさ 0〜100。</summary>
         int GetResidentAffinity(string residentId, string otherResidentId);
         /// <summary>親しい住民（親しさの高い順）。</summary>
@@ -450,6 +470,14 @@ namespace Uchujin.Core
         /// <summary>能力を持つ個体（預けた個体は除く）。ownerId に "*" を渡すと全所有者から探す。</summary>
         IEnumerable<CreatureView> FindOwnedWithAbility(string ownerId, CreatureAbility ability, int minLevel = 1);
         bool SetPlacement(string uid, CreaturePlacement placement, string targetId);
+        /// <summary>
+        /// ホストのコマンド処理の中で、発行者（ゲストを含む）の個体の配置を変える。
+        /// ゲストが持ち歩いている個体を星に置く場合は、その個体のデータがゲストから預けられて星の所有になる（元の飼い主は保持）。
+        /// 戻り値 false の時は、まだ預かっていない等で配置できなかった。
+        /// </summary>
+        bool SetPlacementFor(string issuerId, string uid, CreaturePlacement placement, string targetId);
+        /// <summary>この星にいる全員分の個体（GetOwned("*") と同じ）。</summary>
+        IReadOnlyList<CreatureView> GetAllOnPlanet();
         string GetSpeciesName(string speciesId);
         IReadOnlyList<CreatureAbility> GetSpeciesAbilities(string speciesId);
         bool IsSpeciesDiscovered(string playerId, string speciesId);
@@ -498,6 +526,11 @@ namespace Uchujin.Core
         IEnumerable<string> CatchableFishIds { get; }
         int GetFishingLevel(string playerId);
         bool IsFishing(string playerId);
+        /// <summary>釣りの技の一覧（ID）。</summary>
+        IEnumerable<string> TechniqueIds { get; }
+        string GetTechniqueName(string techniqueId);
+        /// <summary>技を覚えさせる（釣り名人のクエストなど）。既に覚えていれば false。ゲストへはネット経由で反映する。</summary>
+        bool GrantTechnique(string playerId, string techniqueId);
     }
 
     public interface IMiningService

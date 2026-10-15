@@ -110,6 +110,8 @@ namespace Uchujin.Story
             plan.keepMoney = GUILayout.Toggle(plan.keepMoney, Loc.Format(" お金を持っていく（持っていかない場合は {0} から）", " Bring your money (otherwise start with {0})",
                 UIStyles.Money(PlayerSystem.StarterMoney)), UIStyles.Toggle);
             plan.keepTools = GUILayout.Toggle(plan.keepTools, Loc.T(" 道具の強化を持っていく", " Keep your tool upgrades"), UIStyles.Toggle);
+            plan.keepSkills = GUILayout.Toggle(plan.keepSkills, Loc.T(" 技能・経験を引き継ぐ（釣り・鉱山・農業・生き物取りの腕前、覚えた技、料理の習熟）", " Keep your skills (levels, learned techniques, cooking mastery)"), UIStyles.Toggle);
+            plan.keepCompanions = GUILayout.Toggle(plan.keepCompanions, Loc.T(" 連れている生き物を連れて行く", " Bring your companion creatures"), UIStyles.Toggle);
             plan.shortPrologue = GUILayout.Toggle(plan.shortPrologue, Loc.T(" 新しい星に着く場面を見る", " Watch the arrival on the new planet"), UIStyles.Toggle);
             GUILayout.Space(12);
 

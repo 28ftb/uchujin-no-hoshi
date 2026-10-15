@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Uchujin.Core
@@ -96,6 +97,22 @@ namespace Uchujin.Core
 
         /// <summary>CaptureState の結果を復元。マルチのゲストではプレイ中にも呼ばれる。</summary>
         public virtual void RestoreState(SaveScope scope, string playerId, string json) { }
+
+        /// <summary>
+        /// 同期専用の副キー（セーブには含めない）。例："residents.live"（位置・行動だけの軽い状態）。
+        /// 頻繁に変わる小さな状態をこのキーで送り、重い全体状態（SaveKey）は変化が大きい時だけ送ると通信量を抑えられる。
+        /// 参加時のスナップショットには含まれないので、全体状態だけで完全に復元できること。
+        /// </summary>
+        public virtual IEnumerable<string> SyncSubKeys => null;
+        public virtual string CaptureSyncState(string subKey) => null;
+        /// <summary>ゲストでホストから副キーの状態が届いた時。</summary>
+        public virtual void RestoreSyncState(string subKey, string json) { }
+
+        /// <summary>副キーの状態が変わったことを知らせる。</summary>
+        protected void MarkDirtySub(string subKey)
+        {
+            if (!string.IsNullOrEmpty(subKey)) WorldAuthority.MarkDirty(subKey);
+        }
 
         /// <summary>状態が変わったことをネットワーク同期に知らせる（ソロでは何もしない）。</summary>
         protected void MarkDirty()

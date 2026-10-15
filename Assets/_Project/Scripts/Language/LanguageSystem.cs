@@ -14,8 +14,8 @@ namespace Uchujin.Language
     /// ・Speak：頭上に吹き出し（宇宙語＋表情・身振りの記号）を出し、聞こえる距離なら会話ログへ記録して UtteranceSpokenEvent を発行。
     /// ・Replay：記録の原本（text / tokens）をそのまま再表示する（後から別の宇宙語に変わらない）。
     /// ・会話ログ（最近 300 件）は PlayerPlanetKnowledge スコープ（星ごとの個人の知識）。
-    /// ・マルチ：ホストとゲストは同じシード＋同じ生成バージョンで同じ言語を作る。ホストで話された発話は
-    ///   Planet スコープの中継バッファでゲストにも届き、ゲスト側で吹き出し・記録になる。
+    /// ・マルチ：ホストとゲストは同じシード＋同じ生成バージョンで同じ言語を作る。ホストで話された発話（relayToGuests=true）は
+    ///   一時メッセージ（チャンネル "speech.relay"、セーブしない）で意味データのままゲストへ届き、ゲスト側で同じ規則で変換して吹き出し・記録になる。
     /// ・内部の意味（internalId / meaning）は一切表示しない。正解の自動翻訳はしない。
     /// </summary>
     public sealed class LanguageSystem : GameSystemBase, ISpeechService
@@ -27,7 +27,8 @@ namespace Uchujin.Language
         public const float SignRadius = 9f;
         public const int MaxLogRecords = 300;
         public const int MaxUnheardRecords = 400;
-        public const int MaxRelayEntries = 8;
+        /// <summary>発話の中継に使う一時メッセージのチャンネル。</summary>
+        public const string SpeechRelayChannel = "speech.relay";
         /// <summary>吹き出しの表示時間：基本＋1語ごと＋1文字ごと（秒）。</summary>
         public const float BubbleBaseSeconds = 2.4f;
         public const float BubblePerToken = 0.32f;
@@ -56,11 +57,7 @@ namespace Uchujin.Language
         private SpeechVoice voice;
         private LanguageSettingsApp settingsApp;
 
-        // マルチ：発話の中継
-        private readonly List<SpeechRelayEntry> relay = new List<SpeechRelayEntry>();
-        private int relaySerial;
-        private int relayLastSeen;
-        private bool relayPrimed;
+        // マルチ：言語の指紋の不一致の警告を1回にする
         private string remoteFingerprint;
 
         public LanguageSystem()
@@ -94,25 +91,21 @@ namespace Uchujin.Language
         // ライフサイクル
         // ------------------------------------------------------------
 
+        public override void RegisterContent()
+        {
+            WorldAuthority.RegisterTransientHandler(SpeechRelayChannel, OnSpeechRelayReceived);
+        }
+
         public override void PreparePlanet(PlanetContext ctx)
         {
             // 先に準備された他システム（World など）が語を求めて既に同じ星の言語を作っていれば、それを使い続ける
             bool reuse = lang != null && lang.PlanetSeed == ctx.Seed && lang.Version == Math.Max(1, Math.Min(ctx.Planet.languageGenVersion, LanguageDefinition.LatestVersion));
             if (!reuse) lang = LanguageDefinition.Generate(ctx.Seed, ctx.Planet.languageGenVersion);
             renderer = new SentenceRenderer(lang);
-            relay.Clear();
-            relaySerial = 0;
-            relayLastSeen = 0;
-            relayPrimed = false;
             remoteFingerprint = null;
             ClearLogs();
             // 他システムが PreparePlanet 中に名前などを参照できるよう、星の名前を先に作っておく
             lang.Lexicon.Get(PlanetNameConcept);
-        }
-
-        public override void OnNewPlanet(PlanetContext ctx)
-        {
-            relayPrimed = true;
         }
 
         public override void BuildScene()
@@ -124,7 +117,6 @@ namespace Uchujin.Language
         {
             UIManager.RegisterOverlay(overlay);
             PregenerateDynamicWords();
-            relayPrimed = true;
             var tablet = Game.Service<ITabletService>();
             if (tablet != null)
             {
@@ -162,8 +154,6 @@ namespace Uchujin.Language
             UIManager.UnregisterOverlay(overlay);
             overlay.Clear();
             voice.Dispose();
-            relay.Clear();
-            relayPrimed = false;
             ClearLogs();
             lang = null;
             renderer = null;
@@ -264,11 +254,19 @@ namespace Uchujin.Language
 
         public UtteranceRecord Speak(Utterance utterance, Transform speaker, SpeechChannel channel, string speakerKind = "resident")
         {
+            return Speak(utterance, speaker, channel, speakerKind, true);
+        }
+
+        /// <summary>
+        /// 話す。relayToGuests=false なら、ホストでもゲストへ中継しない（各端末がそれぞれ生成する独り言・立ち話など、二重表示を避けたい発話用）。
+        /// </summary>
+        public UtteranceRecord Speak(Utterance utterance, Transform speaker, SpeechChannel channel, string speakerKind, bool relayToGuests)
+        {
             if (utterance == null) return null;
             Vector3? pos = speaker != null ? speaker.position : (Vector3?)null;
             var rec = SpeakInternal(utterance, speaker, pos, channel, speakerKind, false);
-            // ホスト：ゲストにも届ける
-            if (rec != null && WorldAuthority.Role == NetRole.Host) AddRelay(utterance, speakerKind, channel, pos);
+            // ホスト：ゲストにも届ける（意味データのまま。ゲスト側で同じ規則で変換する）
+            if (rec != null && relayToGuests && WorldAuthority.Role == NetRole.Host) SendRelay(utterance, speakerKind, channel, pos);
             return rec;
         }
 
@@ -501,15 +499,13 @@ namespace Uchujin.Language
         public static bool IsPointerOverBubble(Vector2 screenPosition) => SpeechBubbleOverlay.IsPointerOver(screenPosition);
 
         // ------------------------------------------------------------
-        // マルチ：発話の中継（ホスト → ゲスト）
+        // マルチ：発話の中継（ホスト → ゲスト、一時メッセージ "speech.relay"）
         // ------------------------------------------------------------
 
-        private void AddRelay(Utterance u, string speakerKind, SpeechChannel channel, Vector3? pos)
+        private void SendRelay(Utterance u, string speakerKind, SpeechChannel channel, Vector3? pos)
         {
-            relaySerial++;
-            relay.Add(new SpeechRelayEntry
+            var e = new SpeechRelayEntry
             {
-                serial = relaySerial,
                 speakerId = u.speakerId,
                 speakerKind = speakerKind,
                 channel = channel,
@@ -517,40 +513,58 @@ namespace Uchujin.Language
                 x = pos?.x ?? 0f,
                 y = pos?.y ?? 0f,
                 z = pos?.z ?? 0f,
-                utterance = CloneUtterance(u)
-            });
-            while (relay.Count > MaxRelayEntries) relay.RemoveAt(0);
-            MarkDirty();
-        }
-
-        private void ReceiveRelay(List<SpeechRelayEntry> entries)
-        {
-            if (entries == null) return;
-            int max = relayLastSeen;
-            foreach (var e in entries) if (e != null && e.serial > max) max = e.serial;
-            if (!relayPrimed || !WorldAuthority.IsGuest)
+                utterance = u
+            };
+            string json;
+            try { json = JsonUtility.ToJson(e); }
+            catch (Exception ex)
             {
-                // 読み込み直後・参加直後：過去の発話は表示しない
-                relayLastSeen = max;
+                Debug.LogException(ex);
                 return;
             }
-            entries.Sort((a, b) => a.serial.CompareTo(b.serial));
-            foreach (var e in entries)
+            WorldAuthority.BroadcastTransient(SpeechRelayChannel, json);
+        }
+
+        /// <summary>ゲスト：ホストから中継された発話を受け取り、自分の規則で変換して吹き出し・記録にする。</summary>
+        private void OnSpeechRelayReceived(string fromPlayerId, string json)
+        {
+            // ホストの発話だけを受け付ける（ホストに届いたゲストからの物は無視：発話はホスト権威）
+            if (!WorldAuthority.IsGuest || string.IsNullOrEmpty(json)) return;
+            if (Game == null || Game.State != GameState.Playing) return;
+            SpeechRelayEntry e;
+            try { e = JsonUtility.FromJson<SpeechRelayEntry>(json); }
+            catch (Exception ex)
             {
-                if (e == null || e.serial <= relayLastSeen || e.utterance == null) continue;
-                Transform anchor = null;
-                var dir = Game.Service<IResidentDirectory>();
-                if (dir != null && !string.IsNullOrEmpty(e.speakerId))
-                {
-                    var info = dir.Get(e.speakerId);
-                    if (info != null) anchor = info.Transform;
-                }
-                Vector3? pos = e.hasPosition ? new Vector3(e.x, e.y, e.z) : (Vector3?)null;
-                var ch = e.channel == SpeechChannel.Direct ? SpeechChannel.Overheard : e.channel; // 自分に向けた言葉ではない
-                try { SpeakInternal(e.utterance, anchor, anchor != null ? anchor.position : pos, ch, e.speakerKind, true); }
-                catch (Exception ex) { Debug.LogException(ex); }
+                Debug.LogException(ex);
+                return;
             }
-            relayLastSeen = max;
+            if (e?.utterance == null) return;
+            Transform anchor = null;
+            if (!string.IsNullOrEmpty(e.speakerId))
+            {
+                var dir = Game.Service<IResidentDirectory>();
+                var info = dir != null ? dir.Get(e.speakerId) : null;
+                if (info != null) anchor = info.Transform;
+                if (anchor == null)
+                {
+                    var ps = Game.Players != null ? Game.Players.Get(e.speakerId) : null;
+                    if (ps != null) anchor = ps.Avatar;
+                }
+            }
+            Vector3? pos = e.hasPosition ? new Vector3(e.x, e.y, e.z) : (Vector3?)null;
+            var ch = RelayChannelFor(e.channel, e.utterance.addresseeId);
+            SpeakInternal(e.utterance, anchor, anchor != null ? anchor.position : pos, ch, e.speakerKind, true);
+        }
+
+        /// <summary>
+        /// 中継された会話の扱い：自分（ローカルのプレイヤー）に向けた言葉なら Direct、それ以外は Overheard。
+        /// 呼びかけ・看板・手紙・マネピの再現は元のまま（届く距離や見た目が変わらないように）。
+        /// </summary>
+        private SpeechChannel RelayChannelFor(SpeechChannel channel, string addresseeId)
+        {
+            if (channel != SpeechChannel.Direct && channel != SpeechChannel.Overheard) return channel;
+            string me = Game != null ? Game.LocalPlayerId : WorldAuthority.LocalPlayerId;
+            return !string.IsNullOrEmpty(addresseeId) && addresseeId == me ? SpeechChannel.Direct : SpeechChannel.Overheard;
         }
 
         // ------------------------------------------------------------
@@ -567,11 +581,9 @@ namespace Uchujin.Language
                     var st = new LanguagePlanetState
                     {
                         languageGenVersion = lang.Version,
-                        fingerprint = lang.Fingerprint,
-                        relaySerial = relaySerial
+                        fingerprint = lang.Fingerprint
                     };
                     foreach (var b in lang.Lexicon.Bumps) st.bumps.Add(new StringStringPair(b.key, b.value));
-                    st.relay.AddRange(relay);
                     return JsonUtility.ToJson(st);
                 }
                 case SaveScope.PlayerPlanetKnowledge:
@@ -605,9 +617,8 @@ namespace Uchujin.Language
                         remoteFingerprint = st.fingerprint;
                         Debug.LogWarning($"[Language] 言語の指紋が一致しません（保存/ホスト {st.fingerprint} / 現在 {lang.Fingerprint}）。生成アルゴリズムが変わった可能性があります。生成バージョンを上げてください。");
                     }
+                    // 古いセーブ・旧版の状態にある中継バッファ（"relaySerial" / "relay"）は JsonUtility が無視する（中継は一時メッセージへ移った）
                     lang.Lexicon.ApplyBumps(st.bumps);
-                    if (!WorldAuthority.IsGuest) relaySerial = Mathf.Max(relaySerial, st.relaySerial);
-                    ReceiveRelay(st.relay);
                     break;
                 }
                 case SaveScope.PlayerPlanetKnowledge:

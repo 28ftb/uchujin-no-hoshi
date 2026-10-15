@@ -123,6 +123,10 @@ namespace Uchujin.Story
         public bool keepItems = StoryTuning.CarryDefaultKeepItems;
         public bool keepMoney = StoryTuning.CarryDefaultKeepMoney;
         public bool keepTools = StoryTuning.CarryDefaultKeepTools;
+        /// <summary>技能・経験（各活動のレベル・技・料理の習熟）を引き継ぐ。</summary>
+        public bool keepSkills = true;
+        /// <summary>連れている宇宙生物を連れて行く。</summary>
+        public bool keepCompanions = true;
         public bool shortPrologue = true;
         public string seedText = "";
         public string nickname = "";

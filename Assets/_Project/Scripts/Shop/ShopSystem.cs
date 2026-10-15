@@ -20,6 +20,8 @@ namespace Uchujin.Shop
         public const string TabletAppId = "shop";
         public const string ResidentsAppId = "residents";
         public const string PurchaseWhere = "player_shop";
+        /// <summary>ホストが締めた日次集計を委託した持ち主へ届ける一時メッセージのチャンネル。</summary>
+        public const string DaySummaryChannel = "shop.day_summary";
 
         public override string SaveKey => "shop";
         public override int DailyUpdateOrder => 450;
@@ -61,6 +63,7 @@ namespace Uchujin.Shop
         public override void RegisterContent()
         {
             RegisterCommands();
+            WorldAuthority.RegisterTransientHandler(DaySummaryChannel, OnDaySummaryMessage);
         }
 
         public override void PreparePlanet(PlanetContext ctx)
@@ -142,28 +145,75 @@ namespace Uchujin.Shop
             Visuals?.Refresh();
         }
 
-        /// <summary>1日の締め：日別集計と「今日の売上」の通知（商店 §9）。</summary>
+        /// <summary>
+        /// 1日の締め：日別集計と「今日の売上」の通知（商店 §9）。
+        /// 集計の正本はホスト。ゲストの端末の集計は同期待ちで締めの直前の売上が欠けることがあるので、ゲストは自分では通知せず、
+        /// ホストが確定した値を委託した持ち主ごとに一時メッセージで送り、受け取った側で通知する（<see cref="OnDaySummaryMessage"/>）。
+        /// </summary>
         public override void OnDayEnded(int day)
         {
+            if (WorldAuthority.IsGuest) return;
             var sum = Data.Summary(day, false);
+            if (WorldAuthority.IsMultiplayer && sum != null) SendDaySummaries(day, sum);
             var local = LocalPlayer;
-            if (local == null) return;
-            bool isHostLocal = IsLocalHost;
+            if (local == null || !IsLocalHost) return;
             int revenue = 0;
             if (sum != null)
             {
                 foreach (var p in sum.revenueByOwner)
-                    if (isHostLocal ? IsHostOwner(p.key) : p.key == local.PlayerId) revenue += p.value;
+                    if (IsHostOwner(p.key)) revenue += p.value;
             }
             int sold = sum == null ? 0 : sum.itemsSold;
             int visitors = sum == null ? 0 : sum.visitors;
             int messages = sum == null ? 0 : sum.manepiMessages;
-            if (!isHostLocal && revenue == 0) return; // ゲストは自分の委託品が売れた日だけ知らせる
-            if (isHostLocal && OfferCount == 0 && visitors == 0 && revenue == 0) return;
+            if (OfferCount == 0 && visitors == 0 && revenue == 0) return;
+            ToastDaySales(revenue, sold, visitors, messages);
+        }
+
+        private static void ToastDaySales(int revenue, int sold, int visitors, int messages)
+        {
             string text = Loc.Format("今日の売上：{0}（{1}個・来店{2}人）", "Today's sales: {0} ({1} sold, {2} visitors)",
                 Wallet.Format(revenue), sold, visitors);
             if (messages > 0) text += Loc.Format("／マネピの伝言 {0}件", " / {0} Manepi messages", messages);
             UIManager.Toast(text, 6f);
+        }
+
+        /// <summary>ホスト：その日に委託品が売れた持ち主（ゲスト）へ、確定した日次集計を送る。</summary>
+        private void SendDaySummaries(int day, DailySummaryData sum)
+        {
+            foreach (var p in sum.revenueByOwner)
+            {
+                if (p == null || p.value <= 0 || IsHostOwner(p.key)) continue;
+                int sold = 0;
+                foreach (var v in Data.visits)
+                {
+                    if (v.day != day) continue;
+                    foreach (var l in v.lines)
+                        if (l.outcome == VisitLineOutcome.Bought && l.ownerId == p.key) sold += l.qty;
+                }
+                var msg = new ShopDaySummaryMessage
+                {
+                    day = day,
+                    revenue = p.value,
+                    sold = sold,
+                    visitors = sum.visitors,
+                    manepiMessages = sum.manepiMessages
+                };
+                WorldAuthority.SendTransient(p.key, DaySummaryChannel, JsonUtility.ToJson(msg));
+            }
+        }
+
+        /// <summary>委託した持ち主（ゲスト）：ホストが締めた自分の委託品の売上を通知する。</summary>
+        private void OnDaySummaryMessage(string fromPlayerId, string json)
+        {
+            // ホスト（権威側）はゲストからの集計を受け付けない
+            if (WorldAuthority.IsAuthority && (LocalPlayer == null || fromPlayerId != LocalPlayer.PlayerId)) return;
+            if (string.IsNullOrEmpty(json)) return;
+            ShopDaySummaryMessage m = null;
+            try { m = JsonUtility.FromJson<ShopDaySummaryMessage>(json); }
+            catch (Exception e) { Debug.LogException(e); }
+            if (m == null || m.revenue <= 0) return;
+            ToastDaySales(m.revenue, m.sold, m.visitors, m.manepiMessages);
         }
 
         public override void OnDayStarted(int day)

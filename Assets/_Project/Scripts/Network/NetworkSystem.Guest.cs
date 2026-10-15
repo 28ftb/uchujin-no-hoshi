@@ -156,6 +156,7 @@ namespace Uchujin.Network
             snapshotEntries = new List<SaveEntry>();
             bufferedDeltas.Clear();
             bufferedTx.Clear();
+            bufferedTransients.Clear();
             pendingPlayerList = null;
             pendingAbort = false;
             guestBeginRequested = false;
@@ -301,6 +302,9 @@ namespace Uchujin.Network
                     else bufferedTx.Add(m);
                     return;
                 }
+                case NetMsg.Transient:
+                    GuestHandleTransient(NetCodec.Parse<TransientMsg>(body));
+                    return;
                 case NetMsg.Notify:
                 {
                     var m = NetCodec.Parse<NotifyMsg>(body);
@@ -422,6 +426,8 @@ namespace Uchujin.Network
             Subscribe();
             UIManager.RegisterOverlay(overlay);
             RebuildAllAvatars();
+            // 読み込み中に届いた一時メッセージ（発話の中継など）を届いた順に処理する（状態・参加者一覧・アバターの後）
+            FlushBufferedTransients();
             placeNearHostPending = true;
             SendToHost(NetMsg.GuestReady, new EmptyMsg());
             SendProfileUpdate();
@@ -675,6 +681,7 @@ namespace Uchujin.Network
                 // 4. 退出を伝えて切断
                 if (notifyHost) SendToHost(NetMsg.Leave, new LeaveMsg { reason = "leave" });
                 ResetSleepVoteState();
+                bufferedTransients.Clear();
                 ShutdownTransport();
                 ClearSessionPlayers(true);
                 Session = SessionState.None;

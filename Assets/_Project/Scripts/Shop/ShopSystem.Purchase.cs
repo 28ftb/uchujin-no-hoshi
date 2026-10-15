@@ -404,7 +404,7 @@ namespace Uchujin.Shop
                 thrift = traits.thrift
             };
             var utterance = ShopReactions.Build(rc, rng);
-            string recordId = SpeakAndRemember(resident, utterance, focus != null ? focus.slotIndex : -1);
+            string recordId = SpeakAndRemember(resident, utterance, focus != null ? focus.slotIndex : -1, out var manepiRecord);
             visit.recordId = recordId;
             if (newRequest != null)
             {
@@ -431,6 +431,9 @@ namespace Uchujin.Shop
                     sum.putBacks++;
                 }
             }
+
+            // ---- 委託品が売れたら、委託した持ち主（ゲスト）のタブレットにも売上記録とマネピの記録を届ける ----
+            DeliverConsignedSaleRecord(visit, manepiRecord);
 
             // ---- 演出：棚の前で品定めする姿が外から見える ----
             // 終了時刻は日をまたぐ場合に翌日の同時刻へ回す（RequestGoTo は過ぎた時刻を翌日扱いにするため、
@@ -660,19 +663,50 @@ namespace Uchujin.Shop
         /// 反応を話させ（プレイヤーが近くにいれば吹き出し）、必ずマネピに覚えさせる（タブレット §4.3：客がマネピへ伝えた感想）。
         /// 戻り値はマネピの記録ID。
         /// </summary>
-        private string SpeakAndRemember(IResidentInfo resident, Utterance u, int slotIndex)
+        private string SpeakAndRemember(IResidentInfo resident, Utterance u, int slotIndex, out UtteranceRecord record)
         {
+            record = null;
             if (u == null) return null;
             if (IsLocalPlayerNear(ShopConfig.HearingRadius))
                 Game.Service<IResidentDirectory>()?.Speak(resident.Id, u, SpeechChannel.Overheard);
             var speech = Game.Service<ISpeechService>();
             if (speech == null) return null;
             Vector3 at = ManepiTransform != null ? ManepiTransform.position : (Frame != null ? Frame.Center : resident.Position);
-            var record = speech.CreateRecord(u, SpeechChannel.ManepiPlayback, "resident", at);
+            record = speech.CreateRecord(u, SpeechChannel.ManepiPlayback, "resident", at);
             if (record == null) return null;
             Game.Service<IManepiService>()?.LeaveMessage(ManepiBoardId, record);
             Visuals?.OnManepiHeard();
             return record.recordId;
+        }
+
+        /// <summary>
+        /// 委託品が売れた来店を、委託した持ち主の資料ボックスへ（売上記録＝来店の事実、結び付いた発話＝マネピの記録）。
+        /// 持ち主がリモートのゲストなら ITabletService.AddMaterialFor が一時メッセージで本人へ届ける（原本の発話も一緒に）。
+        /// 購入の事実（住民辞典）は Tablet が ShopItemSoldEvent から持ち主へ記録・転送する。
+        /// 資料の ID は来店ごとに一定なので、本人が帳簿の「事実を資料へ」を押しても二重にならない。
+        /// </summary>
+        private void DeliverConsignedSaleRecord(VisitRecordData visit, UtteranceRecord manepiRecord)
+        {
+            if (visit == null) return;
+            var tablet = Game.Service<ITabletService>();
+            if (tablet == null) return;
+            List<string> owners = null;
+            foreach (var l in visit.lines)
+            {
+                if (l.outcome != VisitLineOutcome.Bought || IsHostOwner(l.ownerId)) continue;
+                if (owners == null) owners = new List<string>();
+                if (!owners.Contains(l.ownerId)) owners.Add(l.ownerId);
+            }
+            if (owners == null) return;
+            TabletMaterial mat;
+            try { mat = ShopReportView.BuildMaterial(visit); }
+            catch (System.Exception e)
+            {
+                Debug.LogException(e);
+                return;
+            }
+            mat.tags.Add("consigned");
+            foreach (var owner in owners) tablet.AddMaterialFor(owner, mat, manepiRecord);
         }
 
         /// <summary>閉店中に来た住民：がっかりした様子（吹き出しのみ。マネピは閉店中は預からない）。</summary>

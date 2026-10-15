@@ -9,7 +9,8 @@ namespace Uchujin.Language
     /// 星（Planet スコープ）に保存・同期する言語の状態。ホストが正本。
     /// ・言語生成バージョンと指紋：ホストとゲストで同じ宇宙語になっているかの確認（宇宙語仕様 §14.3、マルチ仕様 §13）。
     /// ・bumps：動的な語どうしの偶然の衝突を回避した語（全員で同じ綴りにするため）。
-    /// ・relay：ホストで話された発話をゲストにも吹き出し表示するための短い中継バッファ。
+    /// ・発話の中継は一時メッセージ（"speech.relay"）へ移した。旧版のセーブにある "relaySerial" / "relay" は読み込み時に無視される
+    ///   （JsonUtility は型に無いフィールドを読み飛ばす）。
     /// </summary>
     [Serializable]
     public class LanguagePlanetState
@@ -17,15 +18,15 @@ namespace Uchujin.Language
         public int languageGenVersion;
         public string fingerprint;
         public List<StringStringPair> bumps = new List<StringStringPair>();
-        public int relaySerial;
-        public List<SpeechRelayEntry> relay = new List<SpeechRelayEntry>();
     }
 
-    /// <summary>ホスト→ゲストの発話中継（意味データを送り、ゲスト側で同じ規則で変換・表示・記録する）。</summary>
+    /// <summary>
+    /// ホスト→ゲストの発話中継（一時メッセージ "speech.relay" の中身。セーブしない）。
+    /// 意味データを送り、ゲスト側で同じ規則で変換・表示・記録する。宛先は utterance.addresseeId。
+    /// </summary>
     [Serializable]
     public class SpeechRelayEntry
     {
-        public int serial;
         public string speakerId;
         public string speakerKind;
         public SpeechChannel channel;

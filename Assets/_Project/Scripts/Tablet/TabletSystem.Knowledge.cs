@@ -255,7 +255,10 @@ namespace Uchujin.Tablet
                 foreach (var m in b.messages)
                     if (m != null && m.recordId == recordId) return m;
             var speech = Uchujin.Core.Game.Instance?.Service<ISpeechService>();
-            return speech?.GetRecord(recordId);
+            var fromLog = speech?.GetRecord(recordId);
+            if (fromLog != null) return fromLog;
+            // 他の端末から届いた原本・会話ログから消えた原本の写し（TabletSystem.Remote.cs）
+            return FindReceivedRecord(recordId);
         }
 
         /// <summary>音声カードを再生（主人公の近くで吹き出しを出す。原本は変えない）。</summary>

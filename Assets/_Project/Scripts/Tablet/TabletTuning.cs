@@ -40,6 +40,10 @@ namespace Uchujin.Tablet
         public const int MaxHistoryLines = 40;
         /// <summary>辞書の「その語が出てきた記録」に並べる最大数。</summary>
         public const int MaxIndexHits = 40;
+
+        // ---- 他の端末から届いた記録（マルチ：ホストで起きた事実をゲスト本人へ） ----
+        /// <summary>資料・住民辞典から参照される発話の原本を自前で保持する最大件数（参照されていない古いものから捨てる）。</summary>
+        public const int MaxReceivedRecords = 400;
     }
 
     /// <summary>

@@ -380,19 +380,12 @@ namespace Uchujin.World
             foreach (var c in new[] { new Vector2(-1, -1), new Vector2(1, -1), new Vector2(-1, 1), new Vector2(1, 1) })
                 Box(root, new Vector3(c.x * (s.x * 0.5f - 0.3f), s.y * 0.5f, c.y * (s.z * 0.5f - 0.3f)), new Vector3(0.35f, s.y, 0.35f), Wood, true, "Post");
             GabledRoof(root, s.y, s.x, s.z, Color.Lerp(new Color(0.95f, 0.6f, 0.3f), P.Roofs[1], 0.3f), 26f);
-            // 奥の壁とかまど
+            // 奥の壁（調理台・かまど・水場は Cooking モジュールが奥の壁際に作る。ここでは重ねて作らない）
             Box(root, new Vector3(0f, 1.2f, -s.z * 0.5f + 0.2f), new Vector3(s.x - 0.6f, 2.4f, 0.25f), Color.Lerp(P.Walls[1], Color.white, 0.3f), true, "BackWall");
-            Box(root, new Vector3(0f, 0.55f, -s.z * 0.5f + 1.0f), new Vector3(s.x - 1.2f, 0.9f, 1.0f), new Color(0.8f, 0.78f, 0.74f), true, "Counter");
-            for (int i = 0; i < 3; i++)
-            {
-                float x = -s.x * 0.3f + i * s.x * 0.3f;
-                Glow(root, PrimitiveType.Cylinder, new Vector3(x, 1.02f, -s.z * 0.5f + 1.0f), new Vector3(0.5f, 0.02f, 0.5f), new Color(1f, 0.45f, 0.2f), "Stove");
-                Cyl(root, new Vector3(x, 1.25f, -s.z * 0.5f + 1.0f), new Vector3(0.55f, 0.2f, 0.55f), i == 1 ? new Color(0.85f, 0.4f, 0.35f) : Metal, false, "Pot");
-            }
             Box(root, new Vector3(s.x * 0.3f, s.y + 1.2f, -s.z * 0.35f), new Vector3(0.7f, 1.8f, 0.7f), P.RockDark, false, "Chimney");
             // 共用のテーブル
-            Box(root, new Vector3(0f, 0.75f, s.z * 0.15f), new Vector3(2.6f, 0.12f, 1.2f), Wood, true, "Table");
-            for (int i = 0; i < 2; i++) Box(root, new Vector3(0f, 0.45f, s.z * 0.15f + (i == 0 ? -1f : 1f)), new Vector3(2.4f, 0.1f, 0.4f), DarkWood, false, "TableBench");
+            Box(root, new Vector3(0f, 0.75f, s.z * 0.25f), new Vector3(2.6f, 0.12f, 1.2f), Wood, true, "Table");
+            for (int i = 0; i < 2; i++) Box(root, new Vector3(0f, 0.45f, s.z * 0.25f + (i == 0 ? -1f : 1f)), new Vector3(2.4f, 0.1f, 0.4f), DarkWood, false, "TableBench");
             var lamp = Glow(root, PrimitiveType.Sphere, new Vector3(0f, s.y - 0.4f, 0f), Vector3.one * 0.35f, LampOn, "Lantern");
             NightLight.Attach(root.gameObject, AddPointLight(root, new Vector3(0f, s.y - 0.7f, 0f), LampOn, 8f, 1.1f), LampOn, new Color(0.7f, 0.65f, 0.5f), lamp.GetComponent<Renderer>());
         }

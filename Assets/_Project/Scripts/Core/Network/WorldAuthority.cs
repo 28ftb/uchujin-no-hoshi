@@ -123,6 +123,10 @@ namespace Uchujin.Core
         bool TryChargeRemote(string playerId, int amount, string reason);
         void GrantMoneyToRemote(string playerId, int amount, string reason);
         void NotifyRemote(string playerId, string ja, string en);
+        /// <summary>ホスト：全ゲストへ一時メッセージ（保存しない）を送る。ゲスト：ホストへ送る。</summary>
+        void BroadcastTransient(string channel, string json);
+        /// <summary>特定のプレイヤーへ一時メッセージを送る（ホスト→ゲスト、ゲスト→ホスト）。</summary>
+        void SendTransientTo(string playerId, string channel, string json);
     }
 
     /// <summary>
@@ -224,6 +228,44 @@ namespace Uchujin.Core
         public static void MarkDirty(string stateKey)
         {
             if (Role == NetRole.Host) Bridge?.MarkDirty(stateKey);
+        }
+
+        private static readonly Dictionary<string, Action<string, string>> transientHandlers = new Dictionary<string, Action<string, string>>();
+
+        /// <summary>
+        /// 一時メッセージ（発話の中継、個人の記録など、セーブに含めない通知）の受信処理を登録する。
+        /// handler(送信元プレイヤーID, json)。同じチャンネルは置き換え。RegisterContent で登録するとよい。
+        /// </summary>
+        public static void RegisterTransientHandler(string channel, Action<string, string> handler)
+        {
+            if (string.IsNullOrEmpty(channel)) return;
+            if (handler == null) transientHandlers.Remove(channel);
+            else transientHandlers[channel] = handler;
+        }
+
+        /// <summary>Network モジュールが一時メッセージを受信した時に呼ぶ。</summary>
+        public static void DispatchTransient(string channel, string fromPlayerId, string json)
+        {
+            if (channel == null || !transientHandlers.TryGetValue(channel, out var h)) return;
+            try { h(fromPlayerId, json); }
+            catch (Exception e) { Debug.LogException(e); }
+        }
+
+        /// <summary>全員へ一時メッセージ（オフラインでは何もしない）。</summary>
+        public static void BroadcastTransient(string channel, string json)
+        {
+            if (IsMultiplayer) Bridge?.BroadcastTransient(channel, json);
+        }
+
+        /// <summary>特定のプレイヤーへ一時メッセージ。宛先がローカルなら直接受信処理を呼ぶ。</summary>
+        public static void SendTransient(string toPlayerId, string channel, string json)
+        {
+            if (string.IsNullOrEmpty(toPlayerId) || toPlayerId == LocalPlayerId)
+            {
+                DispatchTransient(channel, LocalPlayerId, json);
+                return;
+            }
+            if (IsMultiplayer) Bridge?.SendTransientTo(toPlayerId, channel, json);
         }
 
         public static void ResetSession()

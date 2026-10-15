@@ -27,6 +27,7 @@ namespace Uchujin.Network
         TxAck = 14,
         Notify = 15,
         ProfileUpdate = 16,   // ゲスト→ホスト：持ち物・所持金の要約（ホストのミラー用）
+        Transient = 17,       // 一時メッセージ（保存しない通知：発話の中継・個人の記録など）。ホスト→全員／特定のゲスト、ゲスト→ホスト
 
         // プレイヤー
         PlayerList = 20,
@@ -188,6 +189,20 @@ namespace Uchujin.Network
     {
         public string ja;
         public string en;
+    }
+
+    /// <summary>
+    /// 一時メッセージ（WorldAuthority.BroadcastTransient / SendTransient）。セーブしない。
+    /// fromPlayerId は受信側（ホスト）が接続から決めて上書きする（ゲストの申告は信用しない）。
+    /// toPlayerId：空＝ホスト宛て（ゲスト→ホスト）または全員宛て（ホスト→全ゲスト）。別のゲスト宛てならホストが中継する。
+    /// </summary>
+    [Serializable]
+    public class TransientMsg
+    {
+        public string channel;
+        public string fromPlayerId;
+        public string toPlayerId;
+        public string json;
     }
 
     [Serializable]

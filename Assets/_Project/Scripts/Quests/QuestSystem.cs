@@ -383,11 +383,13 @@ namespace Uchujin.Quests
             awaiting.Clear();
             attendSent.Clear();
             handlingGive = false;
+            ResetTechniqueSync();
         }
 
         public override void Tick(float deltaTime)
         {
             View?.Tick(deltaTime);
+            CheckLocalFishingTechnique(deltaTime);
             localCheckTimer -= deltaTime;
             if (localCheckTimer > 0f) return;
             localCheckTimer = 0.5f;

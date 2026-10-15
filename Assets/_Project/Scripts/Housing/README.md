@@ -34,12 +34,12 @@
 - **配置・模様替え §5**：家具を持って [F]/左クリック、または模様替えボード／タブレットから配置モードへ。WASD で視点移動、マウスで格子（0.5m）、R 回転、クリックで置く／家具を選んで動かす、X でしまう、Q で持つのをやめる、Esc で終了。床・敷物・壁掛け（近い壁に自動で沿う）・天井・テーブルの上（机に載せる）・庭。壁紙・床材はパネルから部屋に貼る（前の物は持ち物に戻る）。**Furniture/Decor カテゴリ（と Furniture タグ、生物の住処）のどのアイテムでも置ける**。他モジュールの家具は `FurnitureCatalog.Resolve` がタグから大きさ・使い方を決める。しまうと持ち物に `data="furn:<instanceId>"` 付きで戻り、置き直しても思い出・中身が保たれる。`FurniturePlacedEvent` を発行。
 - **家具を使う §6**：[E] で使う、Shift+[E] で調べる。座る（くつろぐ演出のみ。スタミナなし）、眠る、灯りの点灯／消灯、演奏、水槽をのぞく（魚を入れて泳ぐ）、展示、食卓に料理を並べる、収納、遊ぶ（生物が集まる）、本を読む（宇宙語のまま表示）、窓の外、鏡、時計、作業台。**`ItemTags.Kitchen` の器具は `ICraftingService.OpenStation(CraftStationType.Kitchen, instanceId, player)`**、"workbench" タグは Workbench。
 - **家具を増やすと行動が増える §6.1**：訪問者は座れる数・家具の種類・好みで行動を選ぶ。
-- **生物との暮らし §9**：家具の詳細から「ここに住まわせる」→ `ICreatureService.SetPlacement(uid, Habitat, instanceId)`（コマンド経由）。家の中の生物は Creatures モジュールの姿（`OwnedCreatures/Creature_<uid>`）へ公開 SendMessage（`UchujinCreatureAnchor`/`UchujinCreatureWork`）で家具を指示して歩き回らせる（能力・時間帯：光る生物は夜の灯り、眠り好きは寝床、箱好きは箱、水の生物は水槽、花の生物は花、音の生物は楽器、ヤネコロは高い棚、マルマドは窓）。姿が見つからない時だけ本モジュールの簡易な姿（同じ寝床で一緒に丸くなる・箱に隠れた仲間を眺める・カラポンが家具の色になる等）。
+- **生物との暮らし §9**：家具の詳細から「ここに住まわせる」→ `AssignCreatureCommand` のホスト処理で `ICreatureService.SetPlacementFor(ctx.IssuerId, uid, Habitat, instanceId)`（発行者の個体だけ。先住の他人の子は追い出さない／家主は可）。**ゲストが持ち歩いている子**は、UI がコマンドを送る前に `SetPlacement(uid, Habitat|Home, …)` で個体データごとホストへ預ける（`HousingSystem.SubmitAssignCreature`／`PrepareCreatureForPlanet`。コマンドは順序どおりホストで実行される）。家具を片付けて住処が無くなった子は、その子の飼い主の操作として `Home` へ移す。家・庭の生物の表示は `GetAllOnPlanet()`（今いないゲストが預けた子も出る）。家の中の生物は Creatures モジュールの姿（`OwnedCreatures/Creature_<uid>`）へ公開 SendMessage（`UchujinCreatureAnchor`/`UchujinCreatureWork`）で家具を指示して歩き回らせる（能力・時間帯：光る生物は夜の灯り、眠り好きは寝床、箱好きは箱、水の生物は水槽、花の生物は花、音の生物は楽器、ヤネコロは高い棚、マルマドは窓）。姿が見つからない時だけ本モジュールの簡易な姿（同じ寝床で一緒に丸くなる・箱に隠れた仲間を眺める・カラポンが家具の色になる等）。
 - **庭 §10**：家の右側の決められた範囲（杭で表示、増築で拡張）に屋外の家具を置ける。住民（花好き・花壇の好み）が日中ベンチの前へ立ち寄る（`RequestGoTo`）。野生生物の誘致は Creatures モジュールが `GetPlayerHomeFurniture` の庭家具を見て行う（重複を避けるため本モジュールは出さない）。
-- **住民の招待 §11**：会話メニュー「家に招待する」（親しさ10以上）→ 時刻を選ぶ → 住民がうなずく／首を振る（時刻を指で示す）。約束の45分前に `RequestGoTo` で家の前へ。家に誰かいれば家の中に住民の簡易な姿が入り、15分ごとに家具を選んで使い、家具・住民の好み（`EvaluateItem`）・職業・系統・贈り物・生物で反応（意味データで `ISpeechService.Speak`／`IResidentDirectory.Speak`）。食卓の料理を食べる（おいしい／まずいは本当の好み）、楽器を演奏し他の訪問者が拍手、複数人で会話（§11.3、`AddMemory` で住民同士の記憶）。帰り際に親しさ変化・記憶。留守・睡眠中なら家庭用マネピへ伝言（§13）。親しい住民は休みなくても時々ふらっと来る。訪問者の姿に [E]／身振りで挨拶すると返す。
+- **住民の招待 §11**：会話メニュー「家に招待する」（親しさ10以上）→ 時刻を選ぶ → 住民がうなずく／首を振る（時刻を指で示す）。約束の45分前に `RequestGoTo` で家の前へ。家に誰かいれば家の中に住民の姿（`ResidentProxy`）が入り、`IResidentDirectory.SetIndoorProxy(residentId, 姿, "house:player", 訪問の終了時刻)` で本体の代わりになる（本体は隠れ、吹き出し・身振りの対象・位置が家の中の姿に。帰り始める・後片付けで `ClearIndoorProxy`）。姿に [E] で `OpenConversation`（いつもの会話メニュー）、身振りの返事は住民モジュールが返し、返事の身振りは `UtteranceSpokenEvent` を見て姿でも演じる。15分ごとに家具を選んで使い、家具・住民の好み（`EvaluateItem`）・職業・系統・贈り物・生物で反応（意味データで `ISpeechService.Speak`／`IResidentDirectory.Speak`）。食卓の料理を食べる（おいしい／まずいは本当の好み）、楽器を演奏し他の訪問者が拍手、複数人で会話（§11.3、`AddMemory` で住民同士の記憶）。帰り際に親しさ変化・記憶。留守・睡眠中なら家庭用マネピへ伝言（§13）。親しい住民は休みなくても時々ふらっと来る。代理として登録できなかった時だけ、姿に [E]／身振りで挨拶すると本モジュールが返す。
 - **家庭用マネピ §13**：家の入口に留守番マネピ、止まり木家具でも伝言を聞ける。家に入った時に新しい伝言があれば知らせる。家具職人の完成連絡も伝言で届く。
 - **家具の思い出 §14**：入手元（家具職人から買った／作ってもらった／住民からもらった（`ItemAddedEvent.Source` の住民ID）／自分で作った／お礼）、置いた日・場所・その日の天気（光雨の日など）、座った住民・演奏・食事・生物が住み始めた・贈り主が見に来た・贈り主が引っ越した、友達（マルチ）が座った、自由メモ。発話の記録IDを持ち「声を聞く」「音声カードに保存」。★印（自動では消えない）。`RecordFurnitureMemory` で他モジュールからも追加可。
-- **住民の家 §15・村仕様 §5**：`FacilityType.ResidentHouse` の入口に扉。在宅時だけ入れる（寝ていれば返事がない／留守）。間取り・壁紙・床・基本家具は住民ID・職業・系統・シードから決定的。`AddFurnitureToResidentHome` と購入／贈り物イベントで家具が増える（重複しないよう対応付け）。荷造り中は箱が積まれ家具が減る、引っ越すと家具も無くなり、贈り物の思い出が残る。住人の姿が家具を使い（ソファ・楽器・夜は寝床）、増えた家具・自分が贈った家具を住民辞典に事実として記録。
+- **住民の家 §15・村仕様 §5**：`FacilityType.ResidentHouse` の入口に扉。在宅時だけ入れる（寝ていれば返事がない／留守）。間取り・壁紙・床・基本家具は住民ID・職業・系統・シードから決定的。`AddFurnitureToResidentHome` と購入／贈り物イベントで家具が増える（重複しないよう対応付け）。荷造り中は箱が積まれ家具が減る、引っ越すと家具も無くなり、贈り物の思い出が残る。住人の姿が家具を使い（ソファ・楽器・夜は寝床）、在宅中はこの姿も `SetIndoorProxy(residentId, 姿, AreaIds.ResidentHouse(id), 1時間ごとに延長)` で本体の代わりにする（[E] で会話。この端末だけの登録）。住民が出かける行動（仕事・広場・訪問など）になったら姿は出口から出ていき `ClearIndoorProxy`。増えた家具・自分が贈った家具を住民辞典に事実として記録。
 - **マルチ §20**：配置系はすべて WorldCommand（CoLiving 以上）。家具の所有者（片付けて持ち帰れるのは所有者だけ、動かすのは可）、個人用収納（所有者だけ開ける）、個室（家主が割り当て）、ゲストの立ち入り設定、友達が座った思い出。
 - **経済 §21**：家具 80G〜15,000G、増築 3,000G〜18,000G＋素材。帰還条件とは無関係。家具職人の売上は `GiveMoney` で職人の収入に。
 - **タブレット**：アプリID **`"house"`**（家具の一覧と思い出、招待・注文の予定、生き物、家の設定と「模様替えを始める」）。
@@ -50,8 +50,9 @@
 - 2階・地下は別の場所に並べ、階段で移動（立体的に積み重ねていない）。
 - 家具の色違い・家具ごとの色変更、取り消し（Undo）、配置の保存・呼び出しは未実装。
 - 写真（§14 写真）は未実装（写真の仕組みが Core に無い）。
-- 訪問中の住民本体は屋外（家の前）に立ち、家の中には簡易な姿を出している（下記コアへの要望）。
-- 住民の家での会話は挨拶のみ（住民の会話メニューは Residents の本体にしか出ない）。
+- 訪問中の住民本体は家の前に立ったまま（`RequestGoTo`）で、表示・会話・身振りは代理の姿へ振り替えている。本体を隠す・吹き出しを代理に出す・身振りの対象にするのは Residents 側の `SetIndoorProxy` の実装に依存する。
+- 訪問者の発話（家具への反応など）は従来どおり `ISpeechService.Speak(u, 姿の Transform, …)` で出している（ゲストへの中継は Language 側の扱い）。
+- 住民の家の代理は入った端末だけの登録（他のプレイヤーからは本体が見える）。ホストが住民の家にいる間は、その住民の `IResidentInfo.Position` が家の中の位置になる。
 - 庭の野生生物の出現は Creatures に任せている。
 - 家具の当たり判定は足跡の箱。通路の確保は「入口・階段・部屋の出入口の前」を予約しているだけ。
 
@@ -61,13 +62,15 @@
 - 配置モードの操作感（マウスの平面判定、庭の地形の高低差、パネル上のクリック判定）。
 - 座る演出（見た目の縮み・持ち上げ）、訪問者の歩き（部屋をまたぐ経路）、住民の家の家具の並び。
 - 合成音の音量・音色。
+- 訪問者・住民の家の住人の姿に [E] で会話が開くか、本体が隠れて吹き出しが姿の頭上に出るか（Residents の `SetIndoorProxy` 実装と合わせて）。身振り（G）の返事が二重にならないか。住民の家で住人が出かける時に姿が出口へ歩いて消えるか。
+- マルチ：ゲストが持ち歩いている生き物を住処・家の庭に置けるか（預ける→配置の2コマンド）、連れて行くと手元に戻るか。
 - 数値バランス（価格・増築費・工期・親しさの増え方・招待の成功率・ふらっと訪問の頻度）。
 
 ## 他モジュールとの連携
 
-- **呼ぶ契約**：`IResidentDirectory`（RegisterInteractionProvider, RequestGoTo, Speak, ChangeFriendship, AddMemory, GiveMoney, FindByJob, Get, ActiveResidents）、`IResidentInfo.EvaluateItem/GetFriendship/Knows/Lineage/Job/Activity/MainColor`、`ISpeechService`（Speak, CreateRecord, Render, ResidentName, GetRecord, Replay）、`IManepiService`（SpawnManepi, LeaveMessage, GetMessages, OpenBoard）、`ITabletService`（RegisterApp, RecordResidentObservation, SaveVoiceCard, Open/Close）、`ICreatureService`（GetOwned, Get, SetPlacement, GetSpeciesAbilities, GetSpeciesName）、`ICraftingService.OpenStation`（Kitchen / Workbench / CarpenterBench）、`IWeatherService`、`INetworkService.GetPlayerName/ConnectedPlayerIds`、`SleepHelper.RequestSleep`。
+- **呼ぶ契約**：`IResidentDirectory`（RegisterInteractionProvider, RequestGoTo, Speak, SetIndoorProxy, ClearIndoorProxy, OpenConversation, ChangeFriendship, AddMemory, GiveMoney, FindByJob, Get, ActiveResidents）、`IResidentInfo.EvaluateItem/GetFriendship/Knows/Lineage/Job/Activity/MainColor`、`ISpeechService`（Speak, CreateRecord, Render, ResidentName, GetRecord, Replay）、`IManepiService`（SpawnManepi, LeaveMessage, GetMessages, OpenBoard）、`ITabletService`（RegisterApp, RecordResidentObservation, SaveVoiceCard, Open/Close）、`ICreatureService`（GetOwned, GetAllOnPlanet, Get, SetPlacementFor（コマンド処理内）, SetPlacement（ゲストの UI で預ける時だけ）, GetSpeciesAbilities, GetSpeciesName）、`ICraftingService.OpenStation`（Kitchen / Workbench / CarpenterBench）、`IWeatherService`、`INetworkService.GetPlayerName/ConnectedPlayerIds`、`SleepHelper.RequestSleep`。
 - **発行**：`FurniturePlacedEvent`、`CreatureObservedEvent`（簡易な姿をなでた時）。
-- **購読**：`GiftGivenEvent`, `ResidentPurchaseEvent`, `ResidentMovedInEvent`, `ResidentMovedOutEvent`, `ResidentMoveOutDecidedEvent`, `ItemAddedEvent`, `ItemCraftedEvent`, `AreaChangedEvent`, `SleepStartedEvent`, `SleepEndedEvent`, `PlayerGestureEvent`。
+- **購読**：`UtteranceSpokenEvent`（代理の姿の身振り）, `GiftGivenEvent`, `ResidentPurchaseEvent`, `ResidentMovedInEvent`, `ResidentMovedOutEvent`, `ResidentMoveOutDecidedEvent`, `ItemAddedEvent`, `ItemCraftedEvent`, `AreaChangedEvent`, `SleepStartedEvent`, `SleepEndedEvent`, `PlayerGestureEvent`。
 - **住民の記憶の kind**：`gift_placed_at_home` `ate_at_player_home` `chatted_at_player_home` `visited_home` `visited_home_together` `visit_missed` `player_visited_home`。
 - **発話の contextTag**：`housing.invite_accept/decline`、`housing.visit_greet/furniture/room/listen/chat/end/missed`、`housing.construction_accept/done`、`housing.home_welcome`、`housing.book` など。
 - **アイテムID**：家具 `furniture.*`（95点）、壁紙・床 `decor.wall_*` `decor.floor_*`（13点）、素材 `housing.lumber` `housing.stone_block` `housing.glass_pane`。

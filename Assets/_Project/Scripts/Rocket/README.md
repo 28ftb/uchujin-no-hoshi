@@ -28,7 +28,7 @@
 - **修理装置 R01〜R08（§3.2・§3.3）**：状態は 故障中→調査中→素材収集中→組立可能→修理済み→動作確認済み。段階は強制しない（素材を持っていればいきなり納品・修理できる）。
   - 必要なもの（`RocketTables.Devices`）：R01 導電部材×3＋小型制御部品×1＋作業費／R02 強化船体板×6＋作業費／R03 冷却膜×3＋接続部品×2＋作業費／R04 宇宙船用燃料×3（燃料ライン充填）＋接続部品×1＋作業費／R05 耐熱構造材×4＋結晶コア×2＋精密部品×2＋作業費／R06 揺らぎセンサー×2＋観測部品×2＋作業費／R07 位相制御部品×1＋**Stabilize か Echo を持つ生物を作業場に配置**＋作業費／R08 全装置修理済み＋燃料タンク10＋最終試験。
   - 現金費用（購入部品の代金＋作業費）はバランス §4.3 の 1,200／4,800／6,500／8,000／16,000／14,500／9,000G（計60,000G）に一致させてある。
-  - 生物は消費しない（§7.1）：`FindOwnedWithAbility` で選び `SetPlacement(uid, RocketWorkshop, deviceId)`。修理後は「連れて帰る」で `Companion` に戻せる。各装置に任意の「手伝い生物」（例：R02 温める、R03 冷やす／水、R04 圧搾／発酵／温める）を置くと作業費が20%安くなる【提案】。
+  - 生物は消費しない（§7.1）：`FindOwnedWithAbility` で選び、`RocketAssignCreatureCommand` のホスト処理で `SetPlacementFor(ctx.IssuerId, uid, RocketWorkshop, deviceId)`（発行者の個体だけ。他人の個体は動かせない）。修理後は「連れて帰る」で `Companion` に戻せる（ゲストの子は Creatures が個体データを自動で迎えるケースで返す。家主が他人の子を外す時は `Home` で待ってもらう）。**ゲストが持ち歩いている子**は、UI がコマンドを送る前に `SetPlacement(uid, RocketWorkshop, deviceId)` を呼んで個体データごとホストへ預ける（`RocketSystem.DepositCarriedCreatureIfGuest`。コマンドは順序どおりホストで実行される）。各装置に任意の「手伝い生物」（例：R02 温める、R03 冷やす／水、R04 圧搾／発酵／温める）を置くと作業費が20%安くなる【提案】。
 - **順序は原則自由（§10）**：どの装置にもいつでも納品・支払い可能。燃料はいつでもタンクへ貯められる。**試運転だけ依存**：R03/R04/R06/R07 は補助電源、R05 は電源＋冷却＋燃料ライン＋タンクの燃料、R04 はタンクの燃料。
 - **納品・修理は WorldCommand**（`RocketDeliverCommand` など）。ホストが確定し、装置ごとに誰が貢献したか（点数）と修理履歴を記録（§17）。ゲストは状態差分から修理・試運転・最終起動の演出を手元で再生。
 - **購入部品**（`SharedItemIds.PartSmallControlUnit/ConnectorKit/PrecisionParts/ObservationParts/PartPhaseControlUnit` を `ItemCategory.RocketPart` で登録。500→1,200→3,000→3,500→4,000G と後半ほど高額 §8.4）。修理屋の会話メニュー（`RegisterInteractionProvider`）と、`FacilityType.RepairWorkshop` の入口脇のカウンターで `VendorWindow` 販売。代金と作業費は修理屋の財布へ（`GiveMoney`）。
@@ -62,10 +62,11 @@
 - IMGUI：図ウィンドウの絵（手続き生成テクスチャ）の見え方、診断アプリをタブレット内に描く時の座標（`GUILayout.BeginArea(area)` を前提にしている）。
 - 演出：最終起動の計器表示の長さ（約20秒）、入力ロック解除、住民が集まる位置と人数。
 - バランス：必要個数・作業費・部品価格・燃料10・手伝い割引20%・加工代行の料金と日数。
+- マルチ：ゲストが持ち歩いている生物を作業スペースに配置できるか（預ける→配置）、「連れて帰る」でゲストの手元に戻るか。
 
 ## 他モジュールとの連携点
 
-- 呼ぶ契約：`IResidentDirectory`（FindByJob(Mechanic), Get, ActiveResidents, Speak, RequestGoTo, GiveMoney, ChangeFriendship, AddMemory, RegisterInteractionProvider）、`ICreatureService`（FindOwnedWithAbility, Get, SetPlacement, GetSpeciesName）、`ICraftingService`（OpenStation, RecipesProducing, IsRecipeKnown, GetRecipeName）、`ITabletService`（RegisterApp, Open）、`IStoryService`（BeginEnding, IsEndingInProgress）、`INetworkService`（GetPlayerName）。すべて null 可。
+- 呼ぶ契約：`IResidentDirectory`（FindByJob(Mechanic), Get, ActiveResidents, Speak, RequestGoTo, GiveMoney, ChangeFriendship, AddMemory, RegisterInteractionProvider）、`ICreatureService`（FindOwnedWithAbility, Get, SetPlacementFor（コマンド処理内）, SetPlacement（ゲストの UI で預ける時だけ）, GetSpeciesName）、`ICraftingService`（OpenStation, RecipesProducing, IsRecipeKnown, GetRecipeName）、`ITabletService`（RegisterApp, Open）、`IStoryService`（BeginEnding, IsEndingInProgress）、`INetworkService`（GetPlayerName）。すべて null 可。
 - 実装する契約：`IRocketService`。`TotalDeviceCount` は8（R08＝帰還可能で修理済み扱い）。
 - 発行するイベント：`RocketDeviceRepairedEvent`（R01〜R07 の取り付け時、R08 は最初の最終試験成功時）、`RocketLaunchReadyEvent`、Story が無い時だけ `EndingStartedEvent`／`EndingFinishedEvent`。
 - 購読するイベント：`ItemAddedEvent`（素材の発見）、`ResidentTalkedEvent`（修理屋の初回の図）、`EndingFinishedEvent`、`ResidentMovedOutEvent`。

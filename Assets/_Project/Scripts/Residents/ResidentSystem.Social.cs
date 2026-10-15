@@ -32,6 +32,7 @@ namespace Uchujin.Residents
             EventBus.Subscribe<QuestStateChangedEvent>(OnQuestStateChanged);
             EventBus.Subscribe<WeatherChangedEvent>(OnWeatherChanged);
             EventBus.Subscribe<ItemCraftedEvent>(OnItemCrafted);
+            EventBus.Subscribe<PlayerJoinedEvent>(OnPlayerJoined);
         }
 
         private void UnsubscribeEvents()
@@ -48,6 +49,7 @@ namespace Uchujin.Residents
             EventBus.Unsubscribe<QuestStateChangedEvent>(OnQuestStateChanged);
             EventBus.Unsubscribe<WeatherChangedEvent>(OnWeatherChanged);
             EventBus.Unsubscribe<ItemCraftedEvent>(OnItemCrafted);
+            EventBus.Unsubscribe<PlayerJoinedEvent>(OnPlayerJoined);
         }
 
         /// <summary>近くで見ていた住民（起きていて外にいる）。</summary>
@@ -87,7 +89,13 @@ namespace Uchujin.Residents
                     SharedActivity(r, e.PlayerId, "fished_together", e.ItemId);
                 if (exclaimer == null && (rare || r.P.curiosity > 0.7f)) exclaimer = r;
             }
-            if (exclaimer != null && (rare || fxRng.Chance(0.3f))) Speak(exclaimer.Id, ResidentLines.WitnessReaction(exclaimer, "fish", e.ItemId), SpeechChannel.Direct);
+            if (exclaimer != null && (rare || fxRng.Chance(0.3f)))
+            {
+                // 釣った本人に向けた反応（ホストで生成し、ゲストへ中継する）
+                var wu = ResidentLines.WitnessReaction(exclaimer, "fish", e.ItemId);
+                wu.addresseeId = e.PlayerId;
+                Speak(exclaimer.Id, wu, SpeechChannel.Direct);
+            }
             MarkDirty();
         }
 
@@ -224,9 +232,9 @@ namespace Uchujin.Residents
                     r.State.longGoal.progress += 3f; // 宇宙船が直るのを見て、夢がふくらむ
                 if (saw && r.Avatar != null && r.State.job == ResidentJob.Mechanic)
                 {
-                    r.Avatar.ShowExpression(Expression.VeryHappy, 4f);
-                    r.Avatar.PlayGesture(new GestureCue(Gesture.Jump));
-                    r.Avatar.PlayGesture(new GestureCue(Gesture.Clap));
+                    CueFace(r, Expression.VeryHappy, 4f);
+                    CueGesture(r, new GestureCue(Gesture.Jump));
+                    CueGesture(r, new GestureCue(Gesture.Clap));
                 }
             }
             MarkDirty();
@@ -265,7 +273,7 @@ namespace Uchujin.Residents
                 {
                     if (!r.State.active || r.State.hidden || r.State.holdUntil > Now || r.State.hasGoTo) continue;
                     if (r.P.rainLike < -0.3f && IsOutdoorActivity(r.State.activity)) StartSheltering(r);
-                    else if (r.P.rainLike > 0.5f && r.Avatar != null) r.Avatar.ShowExpression(Expression.Happy, 3f);
+                    else if (r.P.rainLike > 0.5f && r.Avatar != null) CueFace(r, Expression.Happy, 3f);
                 }
                 MarkDirty();
             }
@@ -277,7 +285,8 @@ namespace Uchujin.Residents
             if (Game.LocalPlayer == null || e.PlayerId != Game.LocalPlayer.PlayerId) return;
             if (conversationResidentId == e.TargetResidentId) return;
             var r = GetResident(e.TargetResidentId);
-            if (r == null || r.Avatar == null || !r.Avatar.IsVisible) return;
+            // 家の中の代理を表示中の住民も身振りの相手になる（Game.PerformLocalGesture は IResidentInfo.Position＝代理の位置で選ぶ）
+            if (r == null || r.Avatar == null || !r.Avatar.IsVisible && !r.HasIndoorProxy) return;
             // Game.PerformLocalGesture は TryHandleGesture の結果に関わらずこのイベントを出す。
             // クエストがこの身振りを依頼への返事として処理し、同じフレームでその住民に話させていたら、住民側の反応は重ねない。
             if (questSpokeFrame.TryGetValue(r.Id, out var qf) && qf == UnityEngine.Time.frameCount) return;
@@ -290,6 +299,7 @@ namespace Uchujin.Residents
                 var u = tag == "stay" ? StayLine(r) : ResidentLines.GestureResponse(r, e.Gesture, e.PlayerId, this, null, out _);
                 if (u != null)
                 {
+                    u.addresseeId = e.PlayerId;
                     r.Avatar?.LookAt(Game.LocalPlayer.Position);
                     Speak(r.Id, u, SpeechChannel.Direct);
                 }
@@ -308,6 +318,7 @@ namespace Uchujin.Residents
             {
                 var st = r.State;
                 if (!(st.active || r.IsVisitingFormer) || st.hidden || !st.arrived || st.hasGoTo || st.cutsceneHold || st.holdUntil > Now) continue;
+                if (r.HasIndoorProxy) continue; // 家の中にいる
                 if (!string.IsNullOrEmpty(st.chatPartnerId) || !string.IsNullOrEmpty(st.followPlayerId)) continue;
                 switch (st.activity)
                 {
@@ -335,7 +346,7 @@ namespace Uchujin.Residents
                 {
                     var b = cands[j];
                     if (!string.IsNullOrEmpty(b.State.chatPartnerId)) continue;
-                    if (ResidentUtil.FlatDistance(a.Position, b.Position) > 8f) continue;
+                    if (ResidentUtil.FlatDistance(a.BodyPosition, b.BodyPosition) > 8f) continue;
                     var rel = a.FindRelation(b.Id);
                     if (rel != null && rel.quarrelUntilDay >= Today)
                     {
@@ -506,10 +517,11 @@ namespace Uchujin.Residents
                 receiver.AddMemory(new ResidentMemoryEntry { kind = "received_gift", otherResidentId = giver.Id, itemId = gift.itemId, day = Today, importance = 0.7f });
                 giver.AddMemory(new ResidentMemoryEntry { kind = "gave_gift", otherResidentId = receiver.Id, itemId = gift.itemId, day = Today, importance = 0.5f });
                 receiver.State.mood = Mathf.Clamp(receiver.State.mood + 0.2f + v * 0.2f, -1f, 1f);
-                if (giver.Avatar != null) giver.Avatar.PlayGesture(new GestureCue(Gesture.OfferItem, gift.itemId));
-                if (receiver.Avatar != null) receiver.Avatar.ShowExpression(v > 0.2f ? Expression.VeryHappy : Expression.Happy, 3f);
-                // 主人公が近くで見ていれば、渡す言葉が聞こえる（青い花が村の中を移動する例：§4）
-                if (LocalPlayerNear(giver.Position, ResidentTuning.HearChatRadius))
+                CueGesture(giver, new GestureCue(Gesture.OfferItem, gift.itemId));
+                CueFace(receiver, v > 0.2f ? Expression.VeryHappy : Expression.Happy, 3f);
+                // 主人公（ホスト・ゲストのどちらか）が近くで見ていれば、渡す言葉が聞こえる（青い花が村の中を移動する例：§4）。
+                // ホストだけが生成し、ゲストへ中継する
+                if (AnyPlayerNear(giver.Position, ResidentTuning.HearChatRadius))
                 {
                     var u = new Utterance(giver.Id, "chat.gift").Related(gift.itemId).Related(receiver.Id);
                     u.Say(ResidentLines.F(SpeechAct.Offer, Concepts.GIVE).Agent(Concepts.I).Patient(ResidentLines.ItemArg(gift.itemId)).Recipient(Concepts.YOU));
@@ -531,7 +543,7 @@ namespace Uchujin.Residents
             HandleReceivedItem(receiver, gift, "resident_share");
             receiver.Relation(giver.Id).affinity += 4f;
             receiver.AddMemory(new ResidentMemoryEntry { kind = "received_gift", otherResidentId = giver.Id, itemId = id, day = Today, importance = 0.5f });
-            if (giver.Avatar != null) giver.Avatar.PlayGesture(new GestureCue(Gesture.OfferItem, id));
+            CueGesture(giver, new GestureCue(Gesture.OfferItem, id));
         }
 
         private void MakeUp(Resident a, Resident b)
@@ -552,9 +564,11 @@ namespace Uchujin.Residents
             {
                 // 主人公の家に遊びに来る（§6 親交による反応の変化）
                 Remember(r, "visited_player_home", b.destId, null, 0.5f);
-                if (LocalPlayerNear(r.Position, 15f) && Game.LocalPlayer.PlayerId == b.destId)
+                // 訪ねた相手（ホストでもゲストでも）が家の近くにいれば挨拶する（ホストで生成し、ゲストへ中継する）
+                var owner = Game.Players.Get(b.destId);
+                if (owner != null && owner.CurrentAreaId == AreaIds.Overworld && ResidentUtil.FlatDistance(owner.Position, r.Position) <= 15f)
                 {
-                    var u = new Utterance(r.Id, "visit.player_home");
+                    var u = new Utterance(r.Id, "visit.player_home") { addresseeId = b.destId };
                     u.Say(ResidentLines.F(SpeechAct.Greeting, Concepts.HELLO)).Say(ResidentLines.F(SpeechAct.Statement, Concepts.VISIT).Agent(Concepts.I).Patient(MeaningArg.Of(Concepts.HOUSE).OwnedBy(Concepts.YOU)));
                     u.Face(Expression.Happy).With(Gesture.Wave);
                     Speak(r.Id, u, SpeechChannel.Direct);
@@ -563,7 +577,7 @@ namespace Uchujin.Residents
             }
             var host = GetResident(b.destId);
             if (host == null || !host.State.active) return;
-            bool home = ResidentUtil.FlatDistance(host.Position, HomeYard(host)) < 9f && string.IsNullOrEmpty(host.State.chatPartnerId);
+            bool home = !host.HasIndoorProxy && ResidentUtil.FlatDistance(host.BodyPosition, HomeYard(host)) < 9f && string.IsNullOrEmpty(host.State.chatPartnerId);
             if (!home)
             {
                 r.AddMemory(new ResidentMemoryEntry { kind = "visited_absent", otherResidentId = host.Id, day = Today, importance = 0.2f });
@@ -608,13 +622,8 @@ namespace Uchujin.Residents
         }
 
         // ---------------- 聞こえる会話（ローカル。ゲストも同期された状態から作る） ----------------
-
-        private bool LocalPlayerNear(Vector3 pos, float radius)
-        {
-            var p = Game.LocalPlayer;
-            if (p == null || p.CurrentAreaId != AreaIds.Overworld) return false;
-            return ResidentUtil.FlatDistance(p.Position, pos) <= radius;
-        }
+        // 立ち話・独り言・遠くから手を振るは、各端末がそのプレイヤーの近くの住民について生成し、中継しない（relayToGuests:false）。
+        // ホストだけが生成する発話（AI の反応・伝言・会話ウィンドウ・他モジュールの依頼）だけが中継されるので、同じ場面の発話は重ならない。
 
         private void TickLocalSpeech()
         {
@@ -636,23 +645,21 @@ namespace Uchujin.Residents
                     if (o == null || o.State.chatPartnerId != r.Id || string.CompareOrdinal(r.Id, o.Id) > 0) continue;
                     if (dist > ResidentTuning.HearChatRadius || o.Id == conversationResidentId) continue;
                     if (now < r.nextChatLineTime) continue;
-                    // ホストの主人公も近くにいれば、ホストが話させた発話が Language の中継で届く（ここでも作ると二重になる）
-                    if (HostVoicesNear(r.Avatar.transform.position, ResidentTuning.HearChatRadius)) continue;
                     var speaker = (r.chatTurn / 2) % 2 == 0 ? r : o;
                     var listener = speaker == r ? o : r;
                     if (r.chatTurn % 2 == 0)
                     {
                         var u = ResidentLines.ChatOpening(speaker, listener, this, fxRng, out var topic);
                         r.chatTopicKey = topic;
-                        Speak(speaker.Id, u, SpeechChannel.Overheard);
-                        speaker.Avatar?.LookAt(listener.Position + Vector3.up);
+                        Speak(speaker.Id, u, SpeechChannel.Overheard, false);
+                        speaker.Avatar?.LookAt(listener.BodyPosition + Vector3.up);
                         r.nextChatLineTime = now + 2.8f;
                     }
                     else
                     {
                         var u = ResidentLines.ChatReply(listener, speaker, r.chatTopicKey, this, fxRng);
-                        Speak(listener.Id, u, SpeechChannel.Overheard);
-                        listener.Avatar?.LookAt(speaker.Position + Vector3.up);
+                        Speak(listener.Id, u, SpeechChannel.Overheard, false);
+                        listener.Avatar?.LookAt(speaker.BodyPosition + Vector3.up);
                         r.nextChatLineTime = now + fxRng.Range(ResidentTuning.ChatLineIntervalMin, ResidentTuning.ChatLineIntervalMax);
                     }
                     r.chatTurn++;
@@ -666,33 +673,23 @@ namespace Uchujin.Residents
                 {
                     r.lastWaveTime = now;
                     r.Avatar.LookAt(ppos + Vector3.up);
-                    Speak(r.Id, ResidentLines.WaveFromAfar(r, player.PlayerId), SpeechChannel.Direct);
+                    var wave = ResidentLines.WaveFromAfar(r, player.PlayerId);
+                    wave.addresseeId = player.PlayerId;
+                    Speak(r.Id, wave, SpeechChannel.Direct, false);
                     continue;
                 }
 
                 // ---- 独り言 ----
-                if (dist < ResidentTuning.SelfTalkRadius && now >= r.nextSelfTalkTime && !HostVoicesNear(r.Avatar.transform.position, ResidentTuning.SelfTalkRadius))
+                if (dist < ResidentTuning.SelfTalkRadius && now >= r.nextSelfTalkTime)
                 {
                     r.nextSelfTalkTime = now + ResidentTuning.SelfTalkInterval * fxRng.Range(0.7f, 1.4f);
                     if (fxRng.Chance(0.45f + r.P.talkativeness * 0.3f))
                     {
                         var u = ResidentLines.SelfTalk(r, this, fxRng);
-                        if (u != null && u.sentences.Count > 0) Speak(r.Id, u, SpeechChannel.Overheard);
+                        if (u != null && u.sentences.Count > 0) Speak(r.Id, u, SpeechChannel.Overheard, false);
                     }
                 }
             }
-        }
-
-        /// <summary>
-        /// ゲスト：その場所の近くにホストの主人公がいるか。ホストは自分の近くの住民の立ち話・独り言を生成し、
-        /// ISpeechService.Speak がゲストへ中継するので、ゲスト側でも生成すると同じ場面の発話が二重になる。
-        /// </summary>
-        private bool HostVoicesNear(Vector3 pos, float radius)
-        {
-            if (!WorldAuthority.IsGuest || Game.Planet == null || string.IsNullOrEmpty(Game.Planet.hostPlayerId)) return false;
-            var host = Game.Players.Get(Game.Planet.hostPlayerId);
-            if (host == null || host.IsLocal || host.CurrentAreaId != AreaIds.Overworld) return false;
-            return ResidentUtil.FlatDistance(host.Position, pos) <= radius;
         }
 
         // ---------------- 日々の変化 ----------------
@@ -909,7 +906,7 @@ namespace Uchujin.Residents
             r.State.forecastKnownDay = Today;
             var u = ResidentLines.Forecast(r, weather, Today + 1);
             LeaveMessage("plaza", r, u, SpeechChannel.Broadcast);
-            if (r.Avatar != null && r.Avatar.IsVisible && LocalPlayerNear(r.Position, ResidentTuning.HearChatRadius))
+            if (r.Avatar != null && r.Avatar.IsVisible && AnyPlayerNear(r.Position, ResidentTuning.HearChatRadius))
                 Speak(r.Id, u, SpeechChannel.Broadcast);
             // 広場にいた住民も予報を聞いた
             foreach (var o in Witnesses(r.Position, 15f)) o.State.forecastKnownDay = Today;
@@ -922,7 +919,7 @@ namespace Uchujin.Residents
             r.AddMemory(new ResidentMemoryEntry { kind = "posted_hello", day = Today, importance = 0.3f });
             var u = ResidentLines.NewcomerHello(r);
             LeaveMessage("plaza", r, u, SpeechChannel.Broadcast);
-            if (LocalPlayerNear(r.Position, ResidentTuning.HearChatRadius)) Speak(r.Id, u, SpeechChannel.Broadcast);
+            if (AnyPlayerNear(r.Position, ResidentTuning.HearChatRadius)) Speak(r.Id, u, SpeechChannel.Broadcast);
         }
 
         /// <summary>マネピに伝言を預ける（記録を作るだけ。再生はマネピ・タブレットが行う）。</summary>
@@ -958,7 +955,13 @@ namespace Uchujin.Residents
         {
             var layout = Layout;
             string placeJa = "", placeEn = "";
-            if (layout != null)
+            if (r.HasIndoorProxy)
+            {
+                // 家の中で会った（代理の姿。家の外の施設の名前は使わない）
+                placeJa = "家の中で";
+                placeEn = " inside a house";
+            }
+            else if (layout != null)
             {
                 FacilityInfo near = null;
                 float bd = 12f;

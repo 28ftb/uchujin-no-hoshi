@@ -142,6 +142,7 @@ namespace Uchujin.Housing
                 EventBus.Subscribe<SleepStartedEvent>(OnSleepStarted);
                 EventBus.Subscribe<SleepEndedEvent>(OnSleepEnded);
                 EventBus.Subscribe<PlayerGestureEvent>(OnPlayerGesture);
+                EventBus.Subscribe<UtteranceSpokenEvent>(OnUtteranceSpoken);
                 subscribed = true;
             }
             if (toolHandler == null) toolHandler = new HousingToolHandler(this);
@@ -186,6 +187,7 @@ namespace Uchujin.Housing
                 EventBus.Unsubscribe<SleepStartedEvent>(OnSleepStarted);
                 EventBus.Unsubscribe<SleepEndedEvent>(OnSleepEnded);
                 EventBus.Unsubscribe<PlayerGestureEvent>(OnPlayerGesture);
+                EventBus.Unsubscribe<UtteranceSpokenEvent>(OnUtteranceSpoken);
                 subscribed = false;
             }
             if (toolHandler != null) ToolUseRouter.Unregister(toolHandler);

@@ -15,6 +15,7 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
 | `NetworkSystem.Sleep.cs` | 睡眠の投票（全員同意で翌朝／不同意なら個人の休息） |
 | `NetworkSystem.Dictionary.cs` | 辞書の任意の手渡し（全部／選んだ語だけ、別冊／統合／受け取らない） |
 | `NetworkSystem.Trade.cs` | 直接交換（取引ID・預け・確定・不成立の巻き戻し） |
+| `NetworkSystem.Transient.cs` | 一時メッセージ（`INetworkBridge.BroadcastTransient / SendTransientTo`、受信と読み込み中の溜め置き） |
 | `Transport/INetTransport.cs` | トランスポート抽象（`INetTransport`、`ILobbyTransport`、`TransportFactory`） |
 | `Transport/PacketFragmenter.cs` | 分割・再構成（EOS のパケット上限 1170 バイト対策） |
 | `Transport/LocalUdpTransport.cs` | 開発検証用の LAN／同一PC UDP（簡易な再送・順序付け、受信スレッド→メインスレッドのキュー） |
@@ -38,6 +39,13 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
   - 途中参加も「今の状態」から（§4.2）。シードだけでは復元しない。
   - 生成規則の版（`worldGenVersion` / `languageGenVersion`）が対応外なら参加を断る。
 - **状態差分（§20.2）**：各システムの `MarkDirty()` →（`WorldAuthority.MarkDirty` → `INetworkBridge.MarkDirty`）→ 0.4 秒ごとにまとめて `StateDelta` で送信。キー単位（システム単位）の状態で、同じキーは 0.4 秒に1回まで、内容が変わっていなければ送らない（ハッシュ比較）。**大きなキーは間引く**：キーごとの間隔＝前回の JSON の大きさ÷`NetConfig.LargeKeyBytesPerSecond`（128KB/秒、0.4〜2.5 秒）。間引いている間の MarkDirty は次の1回にまとまる（例：住民の全員分 200KB なら約1.6秒ごと）。読み込み中のゲストに届いた差分はキーごとに最新の1つだけ溜める。`"core.time"` は5秒ごと、`"core.flags"` は2秒ごとに変化を確認して送る。ゲストでは `Game.ApplyRemoteState` → 各システムの `RestoreState(Planet)`。
+  - **同期専用の副キー**（`GameSystemBase.SyncSubKeys`、例 `"residents.live"`＝位置・行動だけの軽い状態）も同じ仕組みで送る。`MarkDirtySub(subKey)` → 同じ `dirtyKeys`、取り出しは `Game.CapturePlanetState(subKey)`（Game が持ち主の `CaptureSyncState` へ振り分け）、ゲストでは `Game.ApplyRemoteState` → `RestoreSyncState`。間隔とハッシュ比較はキーごとに独立しているので、小さな副キーは最短の 0.4 秒ごと、大きな全体状態（例 `"residents"`）だけが大きさに応じて間引かれる。副キーはセーブにも参加時のスナップショット（`CaptureAllPlanetEntries`＝SaveKey のみ）にも入らない。参加者へスナップショットを送った直後に、それまで送ったことのあるスナップショット外のキー（副キー・`"core.time"`）を送り直し対象にするので、新しいゲストも次の同期（約0.4秒後）で軽い状態を受け取る。
+- **一時メッセージ（`NetMsg.Transient`）**：保存しない通知（発話の中継 `"speech.relay"`、個人の記録など）。`WorldAuthority.BroadcastTransient / SendTransient` → `INetworkBridge.BroadcastTransient / SendTransientTo`。
+  - 方向：ホスト→全ゲスト（`BroadcastTransient`）、ホスト→特定のゲスト（`SendTransientTo`）、ゲスト→ホスト（`BroadcastTransient`、または `SendTransientTo(ホストのID)`）。ゲスト→別のゲスト宛ての `SendTransientTo` はホストが中継する。
+  - 受信側で `WorldAuthority.DispatchTransient(channel, fromPlayerId, json)` を呼ぶ。**送信元IDはホストが接続から決めて上書き**（ゲストの申告は使わない）。ゲストはホストの付けたIDをそのまま使う。
+  - 大きな JSON も既存の圧縮（`NetCodec`、768B 超で GZip）とトランスポートの分割で送れる（reliable・順序あり）。
+  - ゲストの読み込み中に届いた物は**全件を届いた順に溜め**（上限 `NetConfig.MaxBufferedTransients`＝256、超えたら古い物から捨てる）、読み込み完了後（状態・Tx・参加者一覧・アバターの後）に順に処理する。ゲストの読み込み中・接続前はゲストからは送らない。
+  - プロトコル版を 2 に上げた（`NetMsg.Transient` 追加、発話の中継を状態から外したため。版1とは繋がらない）。
 - **コマンド**：ゲストの `WorldAuthority.Submit` → `SendCommandToHost` → ホストで `WorldAuthority.ExecuteRemote`（発行者IDは接続元で上書き）→ `CommandResult` → ゲストで `WorldAuthority.CompletePending`。**同じ commandId の再送には実行せずキャッシュした結果を返す**（二重実行防止）。
 - **付与・課金・取り去り（`INetworkBridge`）**：ホスト側でゲストの持ち物・お金のミラー（ゲストの要約＋まだ要約に反映されていない送信済み Tx）を持ち、`RemoteHasItem` / `TryChargeRemote` / `TakeItemFromRemote` を判定。`GrantItemToRemote` 等は **取引ID付きの Tx** としてゲストへ送る。
   - **未受領の Tx はホストの星のセーブ（`"network"` Planet スコープ）に残し、再訪・再接続時に再送**。
@@ -85,7 +93,8 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
 
 - **共同生活・星主不在のアクセス（§4.4）**：未決定のため実装しない。ホストが星を起動している間だけ遊べる。ホスト移行もしない（EOS ロビーも `DisableHostMigration = true`）。
 - **再接続の自動化**：切断されたらゲストはタイトルへ戻る（持ち物は保存済み）。手動で繋ぎ直せば未受領の Tx は再送される。自動再接続・タイムアウトの詳細（§20.5【要技術詳細設計】）は未実装。
-- **差分は「システム単位の状態」**：`MarkDirty(key)` のキーごとに `CaptureState(Planet)` 全体を送る（変化が無ければ送らない・圧縮あり）。オブジェクト単位の細かい差分は各システムの状態設計しだい。
+- **差分は「システム単位の状態」**：`MarkDirty(key)` のキーごとに `CaptureState(Planet)` 全体を送る（変化が無ければ送らない・圧縮あり）。オブジェクト単位の細かい差分は各システムの状態設計しだい（よく変わる軽い部分は副キーに分けられる）。
+- **一時メッセージ**は届かなかった時の再送・保存をしない（reliable の通信路に任せる。切断中・未参加の相手には届かない）。`BroadcastTransient` は送った端末自身では受信処理を呼ばない（`WorldAuthority` の仕様。ローカル宛ての `SendTransient` は直接処理される）。
 - **住民などの NPC の位置補間**：住民の位置は Residents モジュールの状態同期に任せている（このモジュールはプレイヤーの位置だけ補間）。
 - **ゲストの持ち物の正本はゲスト側**：ホストのミラーは要約＋未反映 Tx。ゲスト端末で同時に使った物との競合（ホストが「持っている」と判断した直後にゲストが使った等）では Tx が一部失敗することがある（ログに出す）。
 - **ゲストの身振りとクエスト**：ゲスト端末の `Game.PerformLocalGesture` が `IQuestService.TryHandleGesture` を呼ぶため、ホスト側では二重にならないよう `PlayerGestureEvent` の発行だけにしている（`NetConfig.ForwardGuestGestureToQuests` で切替）。
@@ -130,7 +139,7 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
 |---|---|
 | 実装する契約 | `INetworkService`（`IsOnline`, `Role`, `ConnectedPlayerIds`＝自分を含むセッションの全員、`RequestSleep`, `OpenMultiplayerMenu`, `GetPlayerName`）、`INetworkBridge`（`WorldAuthority.Bridge` に設定） |
 | 使う契約 | `ITabletService.ExportDictionary / ImportDictionary / GetPlayerGloss`、`ISpeechService.RecentRecords / PlanetName`、`IResidentDirectory.ActiveResidents`（身振りの相手）、`IQuestService.TryHandleGesture`（既定は呼ばない） |
-| コア | `WorldAuthority`（Role, Bridge, ExecuteRemote, CompletePending, MarkDirty）、`Game.CapturePlanetState / ApplyRemoteState / CaptureAllPlanetEntries / BeginGuestSession / CaptureLocalProfileEntries / RestoreLocalProfileEntries / SaveGame / LoadSlot / ReturnToTitle / SleepRoutine`、`SaveSystem.ReadPlayer / WritePlayer / ListSlots / SlotExists`、`Game.Players.AddRemote / Remove`、`PlayerAvatarFactory.BuildVisual`、`WorldLabels` |
+| コア | `WorldAuthority`（Role, Bridge, ExecuteRemote, CompletePending, MarkDirty, DispatchTransient）、`Game.CapturePlanetState / ApplyRemoteState / CaptureAllPlanetEntries / BeginGuestSession / CaptureLocalProfileEntries / RestoreLocalProfileEntries / SaveGame / LoadSlot / ReturnToTitle / SleepRoutine`、`SaveSystem.ReadPlayer / WritePlayer / ListSlots / SlotExists`、`Game.Players.AddRemote / Remove`、`PlayerAvatarFactory.BuildVisual`、`WorldLabels` |
 | 発行するイベント | `PlayerJoinedEvent`、`PlayerLeftEvent`、`PlayerGestureEvent`（ホストでゲストの身振り） |
 | 購読するイベント | `PlayerGestureEvent`（自分の身振りを送る）、`ItemAddedEvent / ItemRemovedEvent / MoneyChangedEvent / ToolUpgradedEvent`（ゲストの持ち物要約の送信） |
 | セーブ | `SaveKey = "network"`：Planet＝来たことのあるゲストと権限、未受領 Tx（スナップショットではゲストへ送らない）／PlayerProfile＝受領済み取引IDの台帳、交換の預け物 |
@@ -138,14 +147,15 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
 | アイテムID・コマンド | 登録なし（`WorldCommand` は使わず、独自プロトコルで処理） |
 
 ## 調整用の仮数値
-- `NetConfig.cs`：最大人数 4、UDP ポート 47777、同期間隔 0.4 秒、大きなキーの間引き（128KB/秒・最長 2.5 秒）、受領確認までの保存待ち 10 秒、時刻同期 5 秒、位置 10Hz・補間遅延 0.15 秒、睡眠投票 30 秒、交換のタイムアウト、台帳の大きさ、初回の権限（お手伝い）、圧縮しきい値、EOS のソケット名・バケットID・招待コード長、タイトルのボタン表示。
+- `NetConfig.cs`：最大人数 4、UDP ポート 47777、同期間隔 0.4 秒、読み込み中に溜める一時メッセージの上限 256、大きなキーの間引き（128KB/秒・最長 2.5 秒）、受領確認までの保存待ち 10 秒、時刻同期 5 秒、位置 10Hz・補間遅延 0.15 秒、睡眠投票 30 秒、交換のタイムアウト、台帳の大きさ、初回の権限（お手伝い）、圧縮しきい値、EOS のソケット名・バケットID・招待コード長、タイトルのボタン表示。
 - `LocalUdpTransport` 先頭：パケット 1200B、再送 0.25 秒×40回、送信窓 128、ピアのタイムアウト 10 秒。
 - `EosP2PTransport` 先頭：1フレームの送受信上限、挨拶のタイムアウト。
 
 ## Unity 上で確認が必要な点
 - **EOS 全般**：SDK／プラグインの版に合わせた API 名・シグネチャ。ロビー検索の結果、招待コード検索、接続要求の受理、切断通知。下の「EOS の要確認一覧」を参照。
 - 大きな星（スナップショット数百KB）の参加時間、GZip（`System.IO.Compression`）が対象プラットフォームで使えるか。
-- 差分の帯域：頻繁に `MarkDirty` するシステム（住民：約1秒ごとに全員分）の状態サイズ。大きなキーは自動で間引く（`LargeKeyBytesPerSecond` / `PerKeyMaxInterval`）。間引くとゲスト側の住民の動きが粗くなるので、実測して値を調整する。根本的には各システムの状態を「よく変わる部分（位置・行動）」と「たまに変わる部分（記憶・関係）」の別キーに分けるのがよい。
+- 差分の帯域：頻繁に `MarkDirty` するシステム（住民）の状態サイズ。大きなキーは自動で間引く（`LargeKeyBytesPerSecond` / `PerKeyMaxInterval`）。住民が副キー（`"residents.live"`：位置・行動）と全体状態に分かれた後、副キーが 0.4 秒ごとに届き、全体状態は間引かれていることを実測で確認する。
+- 一時メッセージ：発話の中継（`"speech.relay"`）の頻度・遅延、読み込み中に溜めた物が読み込み後に順に処理されること、ゲスト→ホスト・ホスト→特定のゲストの宛先が正しいこと。
 - ゲストの読み込み（`BeginGuestSession`）中・直後に届く差分の適用順、ゲスト到着時にホストの近くに立つ処理。
 - アバターの補間の滑らかさ、ジャンプ・段差、エリア移動時の表示切替、名前ラベルの位置。
 - 睡眠の投票ウィンドウ（非モーダル）と暗転のタイミング、ホストの `SleepRoutine` 後のゲストの時刻合わせ。

@@ -169,8 +169,12 @@ namespace Uchujin.Residents
         public const float ChatDistance = 3.5f;
         public const float HearChatRadius = 18f;
         public const float SelfTalkRadius = 9f;
-        /// <summary>ホストが位置を同期する間隔（秒）。</summary>
-        public const float SyncInterval = 1.0f;
+        /// <summary>ホストが位置・行動など軽い状態（副キー "residents.live"）を送る間隔（実時間秒）。</summary>
+        public const float LiveSyncInterval = 0.5f;
+        /// <summary>全体状態（記憶・関係・予定を含む SaveKey "residents"）を送る最短間隔（実時間秒）。変化があった時だけ送る。</summary>
+        public const float FullSyncMinInterval = 10f;
+        /// <summary>ゲストへ再生させる表情・身振りを覚えておく数。</summary>
+        public const int LiveCueBuffer = 16;
         /// <summary>この分以上まとめて時間が進んだら（睡眠など）住民を目的地へ瞬間移動させる。</summary>
         public const int SnapMinutes = 20;
 

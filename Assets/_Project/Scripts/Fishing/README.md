@@ -38,7 +38,7 @@
 - **成長**（§4）：
   - 竿の段階1〜5（糸の強さ・巻く速さ・アタリの猶予・大物の出やすさ）。強化は釣り名人のメニュー or 釣り名人の小屋の「呼び鈴」。素材（魚＋鉱石）＋お金。代金の6割は名人の財布へ（村の経済循環）。`ToolUpgradedEvent`。段階名は `ToolTypeUtil.TierLabel`。
   - 釣りレベル1〜10（引きが軽く・魚が疲れやすく・アタリの猶予が長く・珍しい魚が寄りやすく）。
-  - **名人から教わる技**7種（§4.3, §5）：名人が宇宙語で話しながら**竿の動きを実演**→プレイヤーが同じ動き（A/D/W/Space/S）を真似できたら習得。宇宙語の理解は不要。覚えた技は PlayerProfile に残るので名人が引っ越しても失われない。名人に会えない場合は小屋の「見本の模型」で練習できる（必要レベル+2）。
+  - **名人から教わる技**7種（§4.3, §5。クエスト（釣り名人の物語）で教わった技も `GrantTechnique` で同じ技として覚える）：名人が宇宙語で話しながら**竿の動きを実演**→プレイヤーが同じ動き（A/D/W/Space/S）を真似できたら習得。宇宙語の理解は不要。覚えた技は PlayerProfile に残るので名人が引っ越しても失われない。名人に会えない場合は小屋の「見本の模型」で練習できる（必要レベル+2）。
 - **名人との交流**（§5, §10）：会話メニューに「釣りの技を見せてもらう」「竿の強化を頼む」「釣り場の話を聞く」「餌・仕掛けを買う」を `RegisterInteractionProvider` で追加。話は意味データ（`Utterance`）で、今日の傾向・修理用の魚の生態など**正しい内容だけ**を話す。住民辞典には観察した事実のみ記録。
 - **大物を釣った時の住民の反応**（§11、宇宙語 §9.2「大きい」の語）：近くの住民が「わあ」「（その魚）とても大きい／珍しい」と言って拍手（ホスト/ソロのみ）。
 - **釣果帳アプリ "fishlog"**（PlayerPlanetKnowledge）：魚ごとの数・最大サイズ・最高品質・釣れた場所・時間帯・天気、見かけた魚影の記録、腕前（レベル・竿・覚えた技）、村の釣果ボードの写し。住民の呼び名は記録しない。伝説・修理用の魚を初めて釣った時はタブレットの資料に事実を追加。
@@ -51,6 +51,7 @@
 - **釣り大会**（§8【提案・未決定】）は未実装。村の釣果ボードで記録を見せ合う形のみ。
 - 名人が実際に水辺へ移動して釣る実演（住民AIの制御）は Residents 側の担当のため、実演はウィンドウ内の簡易図で表現。名人の種類（川・海・ルアー職人・伝説の釣り人 §5.2）は区別せず、`ResidentJob.FishingMaster` の全員が同じ技を教える。
 - 他プレイヤーの浮き・竿の表示同期（Network モジュールの担当）。
+- `GrantTechnique` の一時メッセージは保存・再送しない（宛先が退出中なら届かない。クエストの技は Quests 側が同期されたフラグから本人の端末で付け直す）。
 - 住民の顔付き付箋（古い案）は最新決定どおり扱わない（マネピ・音声カードは Shop/Tablet 側）。
 
 ## Unity 上で確認が必要な点
@@ -71,7 +72,10 @@
 - **使う他モジュールのID**：竿の強化素材に `SharedItemIds.OreConductive/OreSturdyMetal/OreHeatproofMetal`（未登録なら条件から外す）。
 - **WorldCommand**：`ReportCatchCommand`, `UpgradeRodCommand`, `LessonLearnedCommand`。
 - **鉱山の地下湖**：Mining が `Layout.FishingSpots` に `tags = underground, cave, floor:N, radius:R, (cold/deep/crystal)` の釣り場を追加し、釣りは半径で水面判定する（クラスの直接参照なし）。
-- **IFishingService**：`CatchableFishIds`（伝説を除き、その星にある水域の魚）、`GetFishingLevel`、`IsFishing`。
+- **IFishingService**：`CatchableFishIds`（伝説を除き、その星にある水域の魚）、`GetFishingLevel`、`IsFishing`、
+  `TechniqueIds`（技7種の ID＝`FishingTechnique` の名前：`PrecisionCast` `LineHandling` `Lure` `PowerReel` `Guide` `ReadFish` `MasterSecret`）、`GetTechniqueName`（主人公の呼び名・UI 言語）、
+  `GrantTechnique(playerId, techniqueId)`（釣り名人のクエストなど。ローカルならその場で覚えて主人公の言語でトースト、既に覚えていれば false。リモートのゲストなら一時メッセージ `"fishing.technique"`（`TechniqueGrantMessage`）で本人の端末へ届け、受信側で覚える。送った時点で true）。
+- **一時メッセージ**：`"fishing.technique"`（ホスト → 本人）。ホストはゲストからの付与を受け付けない。
 - **AppId**：`"fishlog"`。
 
 ## 調整用の仮数値の場所

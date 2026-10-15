@@ -16,7 +16,8 @@ SaveKey `"creatures"` / DailyUpdateOrder 250 / `ICreatureService` を実装。Co
 | 二重捕獲防止 | `CatchCreatureCommand`（ホストが先着1名で確定、成功率もホストの決定的乱数） |
 | 観察 §13 例B | 近くで見た／[E]観察／特徴的な行動を見る／名人に見せる で図鑑に「事実」を記録し `CreatureObservedEvent` を発行（同じ行動はゲーム内1時間に1回まで） |
 | 所有個体 §6.3・マルチ §10.4 | 固有ID・大きさ・色違い（淡い/濃い/珍しい色：野生で見た色と一致）・性格・得意能力（その能力+1）・好物・来歴。成長 Lv1〜5（Lv3/5で能力Lv+1、ニジマユはLv3で繭→羽）・なつき度（70以上で成長1.5倍）。お世話（なでる1日1回、餌1日3回まで。好物なら大きく効く。義務ではない） |
-| 配置 | 同行（後ろをついて歩く、最大3匹）・ケージ・農場・自宅の庭・住処家具・器具・商店・伝言広場（マネピ）・修理作業場。`SetPlacement` で他モジュールから設定可 |
+| 配置 | 同行（後ろをついて歩く、最大3匹）・ケージ・農場・自宅の庭・住処家具・器具・商店・伝言広場（マネピ）・修理作業場。他モジュールの UI からは `SetPlacement`（ローカルプレイヤーの操作）、ホストのコマンド処理の中からは `SetPlacementFor(issuerId, …)`（発行者の権限・所有を確認：飼い主は何でも、家主（Owner）は星の中での移動だけ。他人の子を連れて行くことはできない） |
+| ゲストの生物の配置（マルチ） | ゲストが持ち歩く個体はホストにデータが無い。ゲストの UI で `SetPlacement(uid, 星の配置, target)` を呼ぶと `PlaceCreatureCommand`（個体の完全な JSON 付き）でホストへ預け、ホストは星の個体（元の飼い主 ownerId＝ゲスト）として登録する。成功の結果を受けた時だけ、ゲストの持ち歩き一覧の個体を「控え（Deposited）」に変える（失敗なら変えない。この星では星の記録が優先されるので二重に出ない）。同じ個体の再送・二度押しは星の記録を正として配置だけ更新。続けて送られた各モジュールのコマンド（順序どおりホストで実行）の中の `SetPlacementFor` が成功する。連れ戻す（同行・ケージへ）時は、ホストが「自動で迎える」ケース（個体データ入り）をゲストへ渡し、ゲスト側で控えを置き換える。ホスト本人の持ち歩く個体は `SetPlacementFor` がその場で星へ置く |
 | 星間移動 マルチ §10 | 同行＝PlayerProfile。星に置く＝預ける（`PlaceCreatureCommand`、Planet に保存、持ち主の Profile には「控え（Deposited）」が残る）。譲る＝ケースに入れて（`case.<speciesId>` アイテム、`ItemStack.data` に個体データ）渡す・取引・商店で売る・贈る |
 | 交流 §7 | 飼っている子同士が近いと固有の行動（9組：§7の7組＋ポカリス×ネムリコ、タネコロ×タネパタ）。近くで見ると図鑑に記録 |
 | 繁殖 §6.3【提案】 | 同じ場所に置いた同種・同じ飼い主・なつき60以上・Lv2以上の2匹で1日4%。親と違う色が出ることがある |
@@ -45,6 +46,8 @@ SaveKey `"creatures"` / DailyUpdateOrder 250 / `ICreatureService` を実装。Co
 - 寿命・空腹・疲労なし（仕様で未決定、義務的にしない方針）。
 - 器具（Device）に入った個体の見た目は出さない（Cooking 側の担当）。商店・伝言広場のマネピも Tablet/Shop 側が出すので出さない。
 - 図鑑の観察記録は「行動のキー＋日」。証拠写真の貼り付けは無し。
+- ゲストの預ける→配置は2つのコマンドを続けて送る（到達・順序保証の通信が前提）。預けた後に配置コマンドだけが失敗した時は、個体は預けた時の配置のまま星に残る（引き取れば戻る）。
+- ゲストへ個体を返すのはホストがその時つながっているゲストだけ（`Bridge.GrantItemToRemote`）。家主が他人の子を外す操作は星の中の移動（例：家の庭）になる。
 - 「次の星へ」選択時（`EndingFinishedEvent`）は、星に置いた自分の個体をケージに入れて連れて行く。星に残したい場合の選択UIは無い。
 
 ## 3. Unity 上で確認が必要な点
@@ -53,6 +56,7 @@ SaveKey `"creatures"` / DailyUpdateOrder 250 / `ICreatureService` を実装。Co
 - 出現数（プレイヤー周囲最大9匹）とパフォーマンス（`WorldLabels` を各生物に1つ登録している）。
 - 鉱山の床へのレイキャストが Mining の床コライダーで期待どおり当たるか。
 - 同行の追従（段差・屋内・エリア移動時のワープ）。
+- マルチ：ゲストの持ち歩く子を住処・作業場・器具・農場に置く→その場所に出る・ゲストの一覧で二重にならない・連れ戻すと手元（同行／ケージ）へ戻る。
 - タブレット内の IMGUI レイアウト（`Draw(Rect)` 内で `GUILayout.BeginArea(area)` を使用）。
 
 ## 4. 他モジュールとの連携
@@ -60,9 +64,10 @@ SaveKey `"creatures"` / DailyUpdateOrder 250 / `ICreatureService` を実装。Co
 - **発行**：`CreatureCaughtEvent`、`CreatureObservedEvent`（Behavior：`seen`、行動キー、`pair.*`、`expert.<能力>`）、`ToolUpgradedEvent`（網）。
 - **購読**：`AreaChangedEvent`、`OreMinedEvent`、`PlayerGestureEvent`、`WeatherChangedEvent`、`EndingFinishedEvent`、`CreatureObservedEvent`（他モジュールが発行した観察も図鑑へ。`work.*`・`combo.*`・`ability.<CreatureAbility名>` は能力が図鑑で分かる）。
 - **約束**：
-  - `GetOwned("*")`（`CreatureSystem.AnyOwner`）＝この星にいる全員分＋自分の持ち歩く個体（Farming が使用）。
+  - `GetAllOnPlanet()`＝`GetOwned("*")`（`CreatureSystem.AnyOwner`）＝この星にいる全員分＋自分の持ち歩く個体（Farming・Housing が使用）。
   - 見た目の SendMessage：`SceneRoot/OwnedCreatures/Creature_<uid>` に `"UchujinCreatureAnchor"(Vector3)`（住み場所）／`"UchujinCreatureWork"(Vector3)`（そこへ行って働く仕草）。
-  - Cooking は `FindOwnedWithAbility` → `SetPlacement(uid, Device, stationId)`。Housing は `SetPlacement(uid, Habitat, furnitureInstanceId)`（家具の位置は `GetPlayerHomeFurniture` から引く）。Rocket は `SetPlacement(uid, RocketWorkshop, ...)`。
+  - Cooking は `FindOwnedWithAbility` → `SetPlacement(uid, Device, stationId)`（UI から）。Housing は `AssignCreatureCommand` の中で `SetPlacementFor(issuer, uid, Habitat, furnitureInstanceId)`（家具の位置は `GetPlayerHomeFurniture` から引く）。Rocket は `RocketAssignCreatureCommand` の中で `SetPlacementFor(issuer, uid, RocketWorkshop, ...)`。どちらもゲストの UI はコマンドの前に `SetPlacement` で預ける。
+  - **コマンド処理の中で `SetPlacement` を呼ばないこと**（ローカルプレイヤー＝ホストの操作として扱われ、ゲストの個体は動かせない）。Cooking・Farming でコマンド処理から配置を変える箇所があれば `SetPlacementFor(ctx.IssuerId, …)` に置き換える。
 - **登録アイテム**：餌 `cfood.basic` `cfood.fruit_pellet` `cfood.nectar_drop` `cfood.mineral_cookie` `cfood.glow_powder` `cfood.moss_cake` `cfood.water_jelly` `cfood.seed_mix`（`ItemCategory.CreatureFood`）、生物ケース `case.creature.NNN_xxx`（50種、`Misc`＋tag `creature_case`）。
 - **コマンド**：`CatchCreatureCommand` `PlaceCreatureCommand` `MovePlacedCreatureCommand` `RetrieveCreatureCommand` `CareCreatureCommand` `ReleasePlacedCreatureCommand`。
 - **概念**：`Concepts.Species(id)` を50種分 `Concepts.Register`。

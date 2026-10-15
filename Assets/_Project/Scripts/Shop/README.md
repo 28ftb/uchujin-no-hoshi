@@ -26,6 +26,7 @@ Core だけに依存し、他モジュールとは `Game.Instance.Service<IXxx>(
 - **棚**：初期6枠。枠ごとに陳列台の種類（ふつう・冷蔵棚・水槽・家具ステージ・特売コーナー）。商品の簡易モデル（アイテムの Shape/Color、最大3個＋山積み、水槽の魚は泳ぐ、光る物は発光）、値札（主人公のUI言語の数字・品質の★・委託品は◆・特売は SALE）。枠番号が小さいほど入口に近く目に留まりやすい（レイアウト効果）。入替コマンドで配置を変えられる。
 - **棚の操作（WorldCommand）**：持ち物/倉庫から並べる（個数・値段。基準価格×品質の「目安」と比率を表示）、値段を変える、下げる（持ち物/倉庫へ）、自動補充のON/OFF、枠の入替、倉庫の出し入れ、営業時間の設定、改装の依頼、委託売上の受け取り。
 - **委託販売**（マルチ §12.3）：ゲスト（お手伝い以上）が自分の物を並べると `ownerId` 付きの委託品になる。売上は持ち主ごとの未精算（`SettlementData`）に積まれ、持ち主が店で受け取る（`ShopCollectSettlementCommand` → `ctx.PayMoney`）。店主が委託品を下げた場合は持ち主への返品として預かる。ホスト自身の売上は即座にホストの `Wallet` へ入金。
+  - 委託品が売れた来店は、その来店の事実（`ShopReportView.BuildMaterial`、ID `shop.visit.<来店ID>`、タグ `consigned`）とマネピの記録（原本の発話）を `ITabletService.AddMaterialFor(持ち主, …)` で持ち主（ゲスト）の資料ボックスへ届ける（`DeliverConsignedSaleRecord`）。住民辞典の購入の事実は Tablet が `ShopItemSoldEvent` から持ち主へ転送する。
 - **営業**：開店・閉店時間（初期 9〜18時）。店の灯りの改装で設定範囲が 8〜20 → 6〜22 → 5〜24 時に広がる。
 - **`ResidentVisit(resident, intent)`**（バランス §7.2〜§7.6・商店 §3）：
   - 判断要素：所持金・予算（指定予算／所持金・節約度から・1日の使用上限＝所持金×0.55）、好み `EvaluateItem`（贈り物なら相手の好みも混ぜる）、目的（`need`・`preferredTag`・`reasonTag`・`forResidentId`）、値段÷「その住民が感じる価値」（基準価格×品質×鮮度×好み×珍しさ）と、性格で個体差のある「高い」境界（なめらかな受け入れ曲線。絶対に買わない境界は作らない）、在庫・品揃え（目に留まる確率：入口からの距離・看板・内装・特売・水槽・家具ステージ）、時間帯・天気（`IWeatherService`：雨・暑さ寒さ・光雨/星の光帯/花潮/結晶霞）、職業の関心、新商品、鮮度、消耗品と耐久品（§7.3：持っている家具は買わない／同じ日に同じ食べ物は控える）。
@@ -43,7 +44,8 @@ Core だけに依存し、他モジュールとは `Game.Instance.Service<IXxx>(
 - **要望ボード**（商店 §7 の最新版）：欲しい物が無かった住民の要望をマネピが覚え、店の外のボードに **形と色の絵**（その住民が思い浮かべた品の形・色、または総称の形＋色）・顔・数の点で貼る。画面でも絵・顔・数・マネピの再現だけを見せ、文字の訳は出さない。売り切れた好物の「また欲しい」もある。5日で消える。要望に合う品を並べると、その住民が立ち寄りやすくなる。
 - **店舗拡張**（商店 §8）：棚の追加・冷蔵棚・水槽・家具ステージ・特売コーナー・倉庫の拡張・看板（立ち寄り＋注目度）・店の灯り（営業時間の延長）・補充の仕掛け（倉庫から同じ物を同じ値段で補充。何をいくらで売るかは主人公が決める：料理 §13.1）・内装（満足度・注目度）。**家具職人（`ResidentJob.Carpenter`）に話しかけて依頼**（`RegisterInteractionProvider`）し、翌朝に完成。費用の 60% は家具職人の収入（`GiveMoney`、経済循環 §7.6）。家具職人がいない時は帳簿から直接注文できる保険あり。見た目（鉢植え・ラグ・旗・灯り・看板・風船）も変わる。
 - **看板による立ち寄り**：営業中、店の近くを歩いている住民が看板の段階に応じて立ち寄る（`RequestGoTo` で入口へ→着いたら来店処理）。住民モジュールからの `ResidentVisit` 呼び出しが2日以上無い場合は、保険として村全体から立ち寄りを起こす（住民モジュール未接続でも商店で稼げるように）。
-- **1日の締め**（`OnDayEnded`）：日別集計を確定し、`UIManager.Toast` で「今日の売上：◯G（◯個・来店◯人）／マネピの伝言◯件」。ゲストは自分の委託品が売れた日だけ通知。
+- **1日の締め**（`OnDayEnded`）：日別集計を確定し、`UIManager.Toast` で「今日の売上：◯G（◯個・来店◯人）／マネピの伝言◯件」。
+  - 集計の正本はホスト。ゲストは自分の端末の集計（同期待ちで締め直前の売上が欠けることがある）では通知せず、ホストが締めた値を委託品が売れた持ち主ごとに一時メッセージ `"shop.day_summary"`（`ShopDaySummaryMessage`：その人の委託品の売上・個数、店全体の来店者数・伝言数）で送り、受け取ったゲストが通知する（売れなかった日は通知なし）。
 - **日付更新**（`OnDayStarted`）：改装の完成、古い要望・来店履歴（14日）・日別集計（60日）の整理、`IManepiService.ClearMessagesOlderThan("shop", day-7)`。
 - **タブレットアプリ**（AppId `"shop"`）：今日・日別・来店履歴・値段の比較・棚・要望・未精算。どこでも事実を見られ、マネピの再現と音声カード保存は店でのみ（マネピが覚えている声は店にあるため：タブレット §4.4）。未確認の伝言数（♪）を表示。
 - **住民の生活への影響**（商店 §10）：住民側が実施するため、`GiveItem`・`ResidentPurchaseEvent`・`ShopItemSoldEvent`・`AddMemory` を正しく出す。購入の事実は住民辞典へ客観的観察として記録（`RecordResidentObservation`）。
@@ -59,6 +61,7 @@ Core だけに依存し、他モジュールとは `Game.Instance.Service<IXxx>(
 - **住民辞典の特定ページを開く**：契約が無いため、住民辞典アプリ（AppId を `"residents"` と仮定）を開くだけ。
 - **リモートのゲストの委託品の品質**：`CommandContext.TakeItem` が品質を指定できないため、品質はゲスト側の事前確認を信頼している（サイズ・モジュール固有データも引き継げない）。
 - 来店に関する発話は「その場で話した」記録とマネピの記録の2つができる（`Speak` が会話ログ用、`CreateRecord` がマネピ用）。
+- 委託品の売上記録・日次の売上通知は一時メッセージなので、持ち主が退出中だった分は届かない（売上は未精算として星に残り、店の帳簿・タブレットの商店アプリでは後から見られる）。
 
 ## Unity 上で確認が必要な点
 
@@ -67,6 +70,7 @@ Core だけに依存し、他モジュールとは `Game.Instance.Service<IXxx>(
 - 値札（`WorldLabels`）が重なって読みにくくないか。要望ボードの絵の大きさ。
 - 住民の品定めの歩き（`RequestGoTo`）と住民モジュールの行動が衝突しないか（不自然なら `ShopConfig.BrowseWalkEnabled=false`）。
 - タブレットアプリの `Draw(area)` で `GUILayout.BeginArea(area)` を使っている（area がタブレット画面内の相対座標である前提）。
+- マルチ：ゲストの委託品が売れた時に、ゲストのタブレットに売上記録（マネピの声つき）が届くか。日付が変わった時に、ゲストの「今日の売上」がホストの確定値（締め直前の売上を含む）で1回だけ出るか。
 - **数値バランス**：1日の売上（バランス §6.1 の 500〜3,500G/日の目安）、「高い」と感じる比率（`AcceptCurveSteepness`・`ShopTraits.Tolerance`）、予算・1日の上限、立ち寄り確率、改装費。
 - パフォーマンス：来店ごとに全棚を評価（最大約26枠）。表示更新はシグネチャ比較で変化した部分だけ作り直す。
 
@@ -77,11 +81,12 @@ Core だけに依存し、他モジュールとは `Game.Instance.Service<IXxx>(
   - `IResidentDirectory`：`TrySpend` / `GiveItem` / `AddMemory` / `ChangeFriendship` / `Speak` / `RequestGoTo`（"shop_visit" "shop_browse"）/ `ActiveResidents` / `Get` / `FindByJob(Carpenter)` / `GiveMoney` / `RegisterInteractionProvider`
   - `ISpeechService`：`CreateRecord` / `Replay` / `GetRecord`
   - `IManepiService`：`SpawnManepi("shop", …)` / `LeaveMessage("shop", …)` / `GetMessages("shop")` / `ClearMessagesOlderThan("shop", …)`（無い場合は商店内の代替マネピで伝言を聞ける）
-  - `ITabletService`：`RegisterApp`（"shop"）/ `SaveVoiceCard` / `AddMaterial(SalesRecord)` / `RecordResidentObservation` / `Open("residents")`
+  - `ITabletService`：`RegisterApp`（"shop"）/ `SaveVoiceCard` / `AddMaterial(SalesRecord)` / `AddMaterialFor(委託の持ち主, SalesRecord, マネピの記録)` / `RecordResidentObservation` / `Open("residents")`
   - `IWeatherService.Current`、`INetworkService.GetPlayerName`
 - **発行するイベント**：`ShopItemSoldEvent`（1個につき1回。`Price`＝1個の値段、`ShopOwnerId`＝商品の持ち主）、`ResidentPurchaseEvent`（1個につき1回、`Where="player_shop"`）。インベントリ操作に伴う `ItemAddedEvent`/`ItemRemovedEvent`・`MoneyChangedEvent`（理由 `"shop_sale:<itemId>"` など）。
 - **購読するイベント**：`PlayerLeftEvent`（表示更新のみ）。
 - **コマンド**：`ShopStockCommand` `ShopUnstockCommand` `ShopSetPriceCommand` `ShopSetAutoRestockCommand` `ShopSwapSlotsCommand` `ShopStorageDepositCommand` `ShopStorageWithdrawCommand` `ShopSetHoursCommand` `ShopOrderUpgradeCommand` `ShopCollectSettlementCommand`（店主の操作は星の持ち主または共同生活の権限、委託はお手伝い以上）。
+- **一時メッセージ**：`"shop.day_summary"`（ホスト → 委託の持ち主。`ShopDaySummaryMessage`）。
 - **登録するアイテムID**：なし（並べられるのは `ItemTags.NotSellable` を持たず、KeyItem/Letter でない物。大きな家具は家具ステージ、魚は水槽にも置ける）。
 - **セーブ**：`SaveScope.Planet`＝棚・倉庫・営業時間・改装・来店履歴・日別集計・未精算・要望・住民ごとの買い物の記憶。`PlayerPlanetKnowledge`＝伝言をどこまで確認したか。`PlayerProfile` は無し。`RestoreState(Planet)` は表示まで冪等。
 

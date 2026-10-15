@@ -637,7 +637,7 @@ namespace Uchujin.Residents
                 if (Now < st.goUntil)
                 {
                     var goal = new Vector3(st.goX, st.goY, st.goZ);
-                    if (!r.hasTarget && ResidentUtil.FlatDistance(r.Position, goal) > 1.2f) SetDestination(r, goal);
+                    if (!r.hasTarget && ResidentUtil.FlatDistance(r.BodyPosition, goal) > 1.2f) SetDestination(r, goal);
                     st.hidden = false;
                     st.activity = st.goReason != null && (st.goReason.Contains("ending") || st.goReason.Contains("farewell") || st.goReason.Contains("celebr") || st.goReason.Contains("event"))
                         ? ResidentActivity.Celebrating : (r.hasTarget ? ResidentActivity.Walking : ResidentActivity.Visiting);
@@ -656,7 +656,7 @@ namespace Uchujin.Residents
                 if (pl != null && Now < st.followUntil && pl.CurrentAreaId == AreaIds.Overworld)
                 {
                     var target = pl.Position - pl.Forward * 1.8f + Jitter(r.Id, 0.8f);
-                    if (ResidentUtil.FlatDistance(r.Position, target) > 2.5f) SetDestination(r, target);
+                    if (ResidentUtil.FlatDistance(r.BodyPosition, target) > 2.5f) SetDestination(r, target);
                     st.activity = ResidentActivity.Walking;
                     st.hidden = false;
                     SyncAvatar(r);
@@ -824,7 +824,7 @@ namespace Uchujin.Residents
                     if (!string.IsNullOrEmpty(r.State.chatPartnerId))
                     {
                         var o = GetResident(r.State.chatPartnerId);
-                        if (o != null) look = o.Position;
+                        if (o != null) look = o.BodyPosition;
                     }
                     else if (r.State.holdUntil > Now && !string.IsNullOrEmpty(r.State.holdForPlayerId))
                     {
@@ -993,7 +993,7 @@ namespace Uchujin.Residents
                         // 約束を守った：一緒に過ごした記憶
                         string partner = b.note.Substring("promise:".Length);
                         var o = GetResident(partner);
-                        if (o != null && ResidentUtil.FlatDistance(o.Position, r.Position) < 12f)
+                        if (o != null && ResidentUtil.FlatDistance(o.BodyPosition, r.BodyPosition) < 12f)
                         {
                             var rel = r.Relation(partner);
                             rel.affinity = Mathf.Min(100f, rel.affinity + 4f);
@@ -1112,7 +1112,7 @@ namespace Uchujin.Residents
             foreach (var f in layout.Facilities)
             {
                 if (f.type == FacilityType.Streetlight || f.type == FacilityType.Bench || f.type == FacilityType.Well) continue;
-                float d = ResidentUtil.FlatDistance(f.position, r.Position);
+                float d = ResidentUtil.FlatDistance(f.position, r.BodyPosition);
                 if (d < bd) { bd = d; best = f; }
             }
             if (best == null) return;
@@ -1403,7 +1403,7 @@ namespace Uchujin.Residents
                 st.hunger = 0f;
                 st.mood = Mathf.Clamp(st.mood + bv * 0.2f, -1f, 1f);
                 st.heldItemId = id;
-                if (r.Avatar != null) r.Avatar.PlayGesture(new GestureCue(Gesture.Eat, id));
+                CueGesture(r, new GestureCue(Gesture.Eat, id));
                 r.AddMemory(new ResidentMemoryEntry { kind = "ate", itemId = id, day = Today, importance = Mathf.Abs(bv) > 0.5f ? 0.5f : 0.2f });
                 return;
             }
@@ -1450,11 +1450,8 @@ namespace Uchujin.Residents
             if (r.State.midGoal.kind == GoalKind.BigFish && ItemRegistry.Get(fish).Rarity >= 2) r.State.midGoal.progress += 1f;
             else if (r.State.midGoal.kind == GoalKind.BigFish) r.State.midGoal.progress += 0.25f;
             r.AddMemory(new ResidentMemoryEntry { kind = "caught_fish", itemId = fish, day = Today, importance = ItemRegistry.Get(fish).Rarity >= 3 ? 0.8f : 0.3f });
-            if (r.Avatar != null)
-            {
-                r.Avatar.ShowExpression(Expression.Excited, 2.5f);
-                r.Avatar.PlayGesture(new GestureCue(Gesture.Jump));
-            }
+            CueFace(r, Expression.Excited, 2.5f);
+            CueGesture(r, new GestureCue(Gesture.Jump));
         }
 
         private void MineOre(Resident r, SeededRandom rng)
