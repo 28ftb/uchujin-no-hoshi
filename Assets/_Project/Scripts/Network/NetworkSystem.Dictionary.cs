@@ -150,25 +150,40 @@ namespace Uchujin.Network
         }
 
         /// <summary>
-        /// 「選んだ語だけ」の候補：最近聞いた発話に出てきた表面形のうち、自分が辞書に何か書いた語。
-        /// （ITabletService に辞書の一覧取得が無いための代替。コアへの追加要望あり）
-        /// 表面形（聞こえた音）と自分の推測訳だけを使い、内部の意味は表示しない。
+        /// 「選んだ語だけ」の候補：自分の辞書に書いた語（ITabletService.GetDictionarySurfaces）。
+        /// 表示は表面形（聞こえた音）と自分の推測訳だけ（推測訳が無くメモだけの語は「（メモ）」）。内部の意味は表示しない。
+        /// 辞書の一覧が取れない場合は、最近聞いた発話の表面形のうち推測訳を書いた語を候補にする。
         /// </summary>
         public List<KeyValuePair<string, string>> CandidateDictionaryWords()
         {
             var result = new List<KeyValuePair<string, string>>();
             var tablet = Game.Service<ITabletService>();
-            var speech = Game.Service<ISpeechService>();
-            if (tablet == null || speech == null || speech.RecentRecords == null) return result;
+            if (tablet == null) return result;
             var seen = new HashSet<string>();
-            foreach (var rec in speech.RecentRecords)
+            IReadOnlyList<string> surfaces = null;
+            try { surfaces = tablet.GetDictionarySurfaces(); }
+            catch (System.Exception e) { UnityEngine.Debug.LogException(e); }
+            if (surfaces != null)
             {
-                if (rec?.tokens == null) continue;
-                foreach (var tok in rec.tokens)
+                foreach (var surface in surfaces)
                 {
-                    if (tok == null || string.IsNullOrEmpty(tok.surface) || !seen.Add(tok.surface)) continue;
-                    string gloss = tablet.GetPlayerGloss(tok.surface);
-                    if (!string.IsNullOrEmpty(gloss)) result.Add(new KeyValuePair<string, string>(tok.surface, gloss));
+                    if (string.IsNullOrEmpty(surface) || !seen.Add(surface)) continue;
+                    string gloss = tablet.GetPlayerGloss(surface);
+                    result.Add(new KeyValuePair<string, string>(surface, string.IsNullOrEmpty(gloss) ? Loc.T("メモ", "notes") : gloss));
+                }
+            }
+            var speech = Game.Service<ISpeechService>();
+            if (result.Count == 0 && speech != null && speech.RecentRecords != null)
+            {
+                foreach (var rec in speech.RecentRecords)
+                {
+                    if (rec?.tokens == null) continue;
+                    foreach (var tok in rec.tokens)
+                    {
+                        if (tok == null || string.IsNullOrEmpty(tok.surface) || !seen.Add(tok.surface)) continue;
+                        string gloss = tablet.GetPlayerGloss(tok.surface);
+                        if (!string.IsNullOrEmpty(gloss)) result.Add(new KeyValuePair<string, string>(tok.surface, gloss));
+                    }
                 }
             }
             result.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));

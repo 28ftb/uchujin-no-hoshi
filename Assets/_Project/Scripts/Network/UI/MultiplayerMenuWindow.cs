@@ -401,7 +401,7 @@ namespace Uchujin.Network
             {
                 scroll2 = GUILayout.BeginScrollView(scroll2, GUILayout.Height(300));
                 if (dictCandidates == null || dictCandidates.Count == 0)
-                    GUILayout.Label(Loc.T("最近聞いた言葉の中に、辞書に書いた語がありません。下に直接入力できます。", "No recently heard words with your notes. You can type words below."), UIStyles.LabelDim);
+                    GUILayout.Label(Loc.T("辞書に書いた語がありません。下に直接入力できます。", "Your dictionary has no entries yet. You can type words below."), UIStyles.LabelDim);
                 else
                 {
                     foreach (var kv in dictCandidates)

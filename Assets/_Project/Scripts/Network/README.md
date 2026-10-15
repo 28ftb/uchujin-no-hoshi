@@ -37,10 +37,11 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
   3. ゲスト → `Game.BeginGuestSession(planet, entries, flags, onReady)`。読み込み中に届いた差分・Tx・参加者一覧は溜めておき、読み込み後に順に適用 → `GuestReady`
   - 途中参加も「今の状態」から（§4.2）。シードだけでは復元しない。
   - 生成規則の版（`worldGenVersion` / `languageGenVersion`）が対応外なら参加を断る。
-- **状態差分（§20.2）**：各システムの `MarkDirty()` →（`WorldAuthority.MarkDirty` → `INetworkBridge.MarkDirty`）→ 0.4 秒ごとにまとめて `StateDelta` で送信。キー単位（システム単位）の状態で、同じキーは 0.4 秒に1回まで、内容が変わっていなければ送らない（ハッシュ比較）。`"core.time"` は5秒ごと、`"core.flags"` は2秒ごとに変化を確認して送る。ゲストでは `Game.ApplyRemoteState` → 各システムの `RestoreState(Planet)`。
+- **状態差分（§20.2）**：各システムの `MarkDirty()` →（`WorldAuthority.MarkDirty` → `INetworkBridge.MarkDirty`）→ 0.4 秒ごとにまとめて `StateDelta` で送信。キー単位（システム単位）の状態で、同じキーは 0.4 秒に1回まで、内容が変わっていなければ送らない（ハッシュ比較）。**大きなキーは間引く**：キーごとの間隔＝前回の JSON の大きさ÷`NetConfig.LargeKeyBytesPerSecond`（128KB/秒、0.4〜2.5 秒）。間引いている間の MarkDirty は次の1回にまとまる（例：住民の全員分 200KB なら約1.6秒ごと）。読み込み中のゲストに届いた差分はキーごとに最新の1つだけ溜める。`"core.time"` は5秒ごと、`"core.flags"` は2秒ごとに変化を確認して送る。ゲストでは `Game.ApplyRemoteState` → 各システムの `RestoreState(Planet)`。
 - **コマンド**：ゲストの `WorldAuthority.Submit` → `SendCommandToHost` → ホストで `WorldAuthority.ExecuteRemote`（発行者IDは接続元で上書き）→ `CommandResult` → ゲストで `WorldAuthority.CompletePending`。**同じ commandId の再送には実行せずキャッシュした結果を返す**（二重実行防止）。
 - **付与・課金・取り去り（`INetworkBridge`）**：ホスト側でゲストの持ち物・お金のミラー（ゲストの要約＋まだ要約に反映されていない送信済み Tx）を持ち、`RemoteHasItem` / `TryChargeRemote` / `TakeItemFromRemote` を判定。`GrantItemToRemote` 等は **取引ID付きの Tx** としてゲストへ送る。
   - **未受領の Tx はホストの星のセーブ（`"network"` Planet スコープ）に残し、再訪・再接続時に再送**。
+  - **ゲストの受領確認（`TxAck`）は、持ち物と受領台帳を自分のスロットへ保存（`WritePlayer`）してから返す**（受け取りから最長 `NetConfig.TxAckSaveDelay`＝10 秒）。保存前にゲストが異常終了しても、ホストに未受領として残り次の訪問で再送される（台帳があるので二重受領もしない）。
   - **ゲストは受領済み取引IDの台帳（`"network"` PlayerProfile スコープ、持ち物と一緒に自分のスロットへ保存）で、確定済みの再送を二重受領しない（§20.5）**。
 - **位置**：unreliable 約10Hz（`Transform`、簡易バイナリ）。受信側は 0.15 秒遅らせて補間、短時間だけ外挿、12m 以上は瞬間移動、違うエリアにいる人は非表示。ホスト側ではゲストの `PlayerState.Position` / `CurrentAreaId` も更新されるので、他モジュールがゲストの位置を参照できる。
 - **身振り**：自分の身振り（`PlayerGestureEvent`）を送信し、相手側でアバターが動き頭上に「（うなずく）」等を表示。ホストではゲストの身振りを `PlayerGestureEvent`（PlayerId＝ゲスト、近くの住民を TargetResidentId）として発行し、住民などが反応できる。主人公は話さない方針のため**文字チャットは作っていない**。
@@ -48,7 +49,9 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
 ### ゲスト（§4.3, §5, §20.5）
 - 自分の持ち物（Profile）を持ち込む。**タイトルから参加する場合はどのセーブの主人公で行くか選ぶ**（`SaveSystem.ReadPlayer(slot).profile` → `Game.RestoreLocalProfileEntries`）。プレイ中（ソロ）からなら自分の星を保存してから出かけ、そのスロットを保存先にする。
 - 退出・切断・ホスト終了時：訪問先の知識（辞書など）は `Game.SaveGame`（ゲストは訪問先ごとに保存）→ 交換の預け物を巻き戻し → **持ち物を自分のスロットへ `WritePlayer`**（そのスロットの星の知識は残す）→ 切断。
-- 訪問中も 120 秒ごと・日付更新ごとに持ち物を自分のスロットへ自動保存（異常終了時の損失を減らす）。
+- 訪問中も 120 秒ごと・日付更新ごと・Tx を受け取ってから 10 秒以内に持ち物を自分のスロットへ自動保存（異常終了時の損失を減らす）。読み込みの途中で終わった場合は訪問先の知識を保存しない（読み込み前の空の知識で上書きしないため）。
+- 切断の通知が来ないままトランスポートが閉じた・失敗した場合も、切断として持ち物を保存してタイトルへ戻る。
+- 同じ接続のまま挨拶（`Hello`）し直したゲスト（EOS で相手が落ちても接続が残っていた場合など）は「繋ぎ直し」として受け付ける。
 - ホストが終了したらタイトルへ（§20.5 基本案）。自分から帰る時は「自分の星へ帰る」（そのスロットを読み込む）か「タイトルへ戻る」。
 - ゲストの `PlayerState.Permission` はホストが割り当てた権限になる（帰ると Owner に戻る）。
 
@@ -66,7 +69,7 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
 ### 辞書の任意共有（§13、宇宙語 §12、タブレット §12）
 - **自動配布は一切しない**。マルチメニュー「辞書を渡す」→ 相手と範囲（全部／選んだ語だけ）→ `ITabletService.ExportDictionary(...)` → 送信 → 受信側に「別冊として保存／自分の辞書に統合／受け取らない」→ `ImportDictionary`。渡した側には受け取ったかどうかだけ伝わる。
 - 正誤は判定しない（推測・まちがい・うその辞書もそのまま渡る）。コピーして渡すので自分の辞書は減らない。
-- 「選んだ語だけ」の候補は、最近聞いた発話（`ISpeechService.RecentRecords`）の表面形のうち、自分が推測訳を書いた語（`GetPlayerGloss`）＋手入力。**内部の意味は表示しない**。
+- 「選んだ語だけ」の候補は、自分の辞書に書いた語（`ITabletService.GetDictionarySurfaces`、表示は表面形と自分の推測訳 `GetPlayerGloss`。推測訳が無い語は「メモ」）＋手入力。一覧が取れない時は最近聞いた発話の表面形から。**内部の意味は表示しない**。
 
 ### 直接交換（§12.2：直接交換・直接販売・プレゼント）
 - 申し込み → 相手が受ける → 双方が品物・お金を出す（提示が変わると同意は外れる）→ 双方「これでOK」→ ゲストは自分の出した物を持ち物から外して**預ける（台帳に記録）**→ 揃ったらホストが確定し、**取引ID付きの `TradeCommit` Tx**（未受領は保存・再送・二重受領しない）で相手の品物を渡す。
@@ -135,17 +138,35 @@ NPC やワールドセーブの同期はすべてこのモジュール（ホス�
 | アイテムID・コマンド | 登録なし（`WorldCommand` は使わず、独自プロトコルで処理） |
 
 ## 調整用の仮数値
-- `NetConfig.cs`：最大人数 4、UDP ポート 47777、同期間隔 0.4 秒、時刻同期 5 秒、位置 10Hz・補間遅延 0.15 秒、睡眠投票 30 秒、交換のタイムアウト、台帳の大きさ、初回の権限（お手伝い）、圧縮しきい値、EOS のソケット名・バケットID・招待コード長、タイトルのボタン表示。
+- `NetConfig.cs`：最大人数 4、UDP ポート 47777、同期間隔 0.4 秒、大きなキーの間引き（128KB/秒・最長 2.5 秒）、受領確認までの保存待ち 10 秒、時刻同期 5 秒、位置 10Hz・補間遅延 0.15 秒、睡眠投票 30 秒、交換のタイムアウト、台帳の大きさ、初回の権限（お手伝い）、圧縮しきい値、EOS のソケット名・バケットID・招待コード長、タイトルのボタン表示。
 - `LocalUdpTransport` 先頭：パケット 1200B、再送 0.25 秒×40回、送信窓 128、ピアのタイムアウト 10 秒。
 - `EosP2PTransport` 先頭：1フレームの送受信上限、挨拶のタイムアウト。
 
 ## Unity 上で確認が必要な点
-- **EOS 全般**：SDK／プラグインの版に合わせた API 名・シグネチャ（`ReceivePacket` の `ref/out`、`LobbyPermissionLevel` の列挙子名、`Utf8String` の変換、`ProductUserId.ToString()`、`EOSManager` の自動生成で初期化されるか）。ロビー検索の結果、招待コード検索、接続要求の受理、切断通知。
+- **EOS 全般**：SDK／プラグインの版に合わせた API 名・シグネチャ。ロビー検索の結果、招待コード検索、接続要求の受理、切断通知。下の「EOS の要確認一覧」を参照。
 - 大きな星（スナップショット数百KB）の参加時間、GZip（`System.IO.Compression`）が対象プラットフォームで使えるか。
-- 差分の帯域：頻繁に `MarkDirty` するシステム（住民など）の状態サイズ×0.4秒ごと。重ければ `PerKeyMinInterval` を延ばすか、各システムの状態を分割する。
+- 差分の帯域：頻繁に `MarkDirty` するシステム（住民：約1秒ごとに全員分）の状態サイズ。大きなキーは自動で間引く（`LargeKeyBytesPerSecond` / `PerKeyMaxInterval`）。間引くとゲスト側の住民の動きが粗くなるので、実測して値を調整する。根本的には各システムの状態を「よく変わる部分（位置・行動）」と「たまに変わる部分（記憶・関係）」の別キーに分けるのがよい。
 - ゲストの読み込み（`BeginGuestSession`）中・直後に届く差分の適用順、ゲスト到着時にホストの近くに立つ処理。
 - アバターの補間の滑らかさ、ジャンプ・段差、エリア移動時の表示切替、名前ラベルの位置。
 - 睡眠の投票ウィンドウ（非モーダル）と暗転のタイミング、ホストの `SleepRoutine` 後のゲストの時刻合わせ。
 - 交換画面の操作感（品物を1つずつ加える、+/-、お金の増減）、確定・不成立の表示。
 - UDP：Windows ファイアウォール、`SIO_UDP_CONNRESET` の無効化、受信スレッドの終了。
 - 同一PC 2起動（`-uchujinTestSlot`）でのプレイヤーID切り替え。
+
+### EOS の要確認一覧（`#if UCHUJIN_EOS`：SDK が無く型チェックされていない箇所）
+`EosP2PTransport.cs` は EOS C# SDK 1.15〜1.16（Options を `ref` の struct で渡す版）＋ PlayEveryWare EOS Plugin を想定して書いた。導入する版で次の名前・シグネチャを確認すること。
+
+| 区分 | 使っている名前（想定） | 不確かな点 |
+|---|---|---|
+| プラグイン | `PlayEveryWare.EpicOnlineServices.EOSManager`、`EOSManager.Instance.GetEOSPlatformInterface()` | 名前空間（プラグインの版で異なる）。`AddComponent<EOSManager>()` で実行時に作った時に設定 JSON を読んで Platform を初期化するか（シーンに置いたプレハブ前提の版がある）。初期化が非同期なら `GetEOSPlatformInterface()` が null を返すので、初回は失敗→再試行になる |
+| Platform | `Epic.OnlineServices.Platform.PlatformInterface.GetConnectInterface / GetP2PInterface / GetLobbyInterface` | — |
+| Connect | `CreateDeviceIdOptions.DeviceModel`、`Result.DuplicateNotAllowed`、`Connect.LoginOptions { Credentials = new Connect.Credentials { Type = ExternalCredentialType.DeviceidAccessToken, Token = null }, UserLoginInfo = new UserLoginInfo { DisplayName } }`、`Result.InvalidUser` → `CreateUserOptions.ContinuanceToken`、`AddNotifyAuthExpiration(ref AddNotifyAuthExpirationOptions, null, cb(ref AuthExpirationCallbackInfo))`、`RemoveNotifyAuthExpiration` | `Credentials` / `UserLoginInfo` が nullable struct か class か。`LoginCallbackInfo.ContinuanceToken` の型。期限切れ時は `Login` のやり直しでよいか |
+| Lobby 作成 | `CreateLobbyOptions { LocalUserId, MaxLobbyMembers, PermissionLevel = LobbyPermissionLevel.Publicadvertised, PresenceEnabled, AllowInvites, BucketId, DisableHostMigration, EnableRTCRoom }`、`CreateLobbyCallbackInfo.LobbyId` | 列挙子名 `Publicadvertised`（`PublicAdvertised` の版がある）。`EnableRTCRoom` は古い版に無い。`LobbyId` が `Utf8String` の場合の `string` への暗黙変換 |
+| Lobby 属性 | `UpdateLobbyModification(ref, out LobbyModification)`、`LobbyModificationAddAttributeOptions { Attribute = new AttributeData { Key, Value = new AttributeDataValue { AsUtf8 } }, Visibility = LobbyAttributeVisibility.Public }`、`UpdateLobbyOptions.LobbyModificationHandle`、`LobbyModification.Release()` | `AttributeData` の名前空間（`Epic.OnlineServices.Lobby`）。`AttributeDataValue.AsUtf8` の型（`Utf8String`） |
+| Lobby 検索 | `CreateLobbySearch(ref CreateLobbySearchOptions { MaxResults }, out LobbySearch)`、`LobbySearch.SetParameter(ref LobbySearchSetParameterOptions { Parameter, ComparisonOp = ComparisonOp.Equal })`、`Find(ref LobbySearchFindOptions, null, cb)`、`GetSearchResultCount`、`CopySearchResultByIndex(ref, out LobbyDetails)`、`Result.NotFound` | `ComparisonOp` の名前空間（`Epic.OnlineServices`）。独自属性での検索に `BucketId` の指定が要るか。0件の時に `NotFound` が返るか |
+| LobbyDetails | `CopyInfo(ref, out LobbyDetailsInfo?)`（`LobbyId / MaxMembers / AvailableSlots`）、`CopyAttributeByKey(ref, out Lobby.Attribute?)` → `attr.Value.Data.Value.Value.AsUtf8`、`GetLobbyOwner(ref)`、`Release()` | out が nullable struct か。`Attribute.Data` の入れ子と `Utf8String` → `string` の変換 |
+| Lobby 参加・退出 | `JoinLobbyOptions { LobbyDetailsHandle, LocalUserId, PresenceEnabled }`、`JoinLobbyCallbackInfo.LobbyId`、`LeaveLobby`、`DestroyLobby` | — |
+| P2P 通知 | `SocketId { SocketName }`、`AddNotifyPeerConnectionRequest`（`OnIncomingConnectionRequestInfo.RemoteUserId`）→ `AcceptConnection`、`AddNotifyPeerConnectionClosed`（`OnRemoteConnectionClosedInfo.Reason`）、`AddNotifyPeerConnectionEstablished`（`OnPeerConnectionEstablishedInfo`）、`RemoveNotify...` | `SocketId` が struct（1.15 以降）か class か。`AddNotifyPeerConnectionEstablished` は 1.14 未満に無い |
+| P2P 送受信 | `SendPacketOptions { LocalUserId, RemoteUserId, SocketId, Channel, Data = new ArraySegment<byte>(...), AllowDelayedDelivery, Reliability = PacketReliability.ReliableOrdered / UnreliableUnordered }`、送信キュー満杯の `Result.LimitExceeded`、`GetNextReceivedPacketSize(ref GetNextReceivedPacketSizeOptions { RequestedChannel = null }, out uint)`、`ReceivePacket(ref ReceivePacketOptions, ref ProductUserId, ref SocketId, out byte, ArraySegment<byte>, out uint)`、`CloseConnection(s)` | `Data` が `ArraySegment<byte>` か `byte[]` か。`RequestedChannel` が `byte?` か。`ReceivePacket` の `ref`/`out` の並び。満杯時の戻り値が `LimitExceeded` か |
+| ID | `ProductUserId.ToString()` をピアIDの文字列キーに使用 | `ToString()` が ID 文字列を返すか（返さない版では `ProductUserId.ToString(out Utf8String)` 等で取り出す） |
+| 挙動 | ゲストが落ちて再起動した時、ホスト側の P2P 接続が残ったまま新しい挨拶が届くか（`NetworkSystem.HandleHello` は同じ接続からの再挨拶を繋ぎ直しとして受け付ける）。送受信キューの既定サイズ（`SetPacketQueueSize`）で大きな状態（住民など）が詰まらないか | — |

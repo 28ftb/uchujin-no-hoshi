@@ -16,6 +16,8 @@ namespace Uchujin.Network
         private readonly HashSet<string> dirtyKeys = new HashSet<string>();
         private readonly Dictionary<string, ulong> lastSentHash = new Dictionary<string, ulong>();
         private readonly Dictionary<string, float> lastSentTime = new Dictionary<string, float>();
+        /// <summary>キーごとの送信間隔（前回の状態の大きさから決める：大きなキーの間引き）。</summary>
+        private readonly Dictionary<string, float> keyInterval = new Dictionary<string, float>();
         private float syncTimer;
         private float timeSyncTimer;
         private float flagsTimer;
@@ -57,6 +59,7 @@ namespace Uchujin.Network
             dirtyKeys.Clear();
             lastSentHash.Clear();
             lastSentTime.Clear();
+            keyInterval.Clear();
             var lp = Game.LocalPlayer;
             lp.Permission = PermissionLevel.Owner;
             var self = new SessionPlayer
@@ -203,13 +206,17 @@ namespace Uchujin.Network
             foreach (var key in dirtyKeys)
             {
                 if (key == SaveKey) continue;
-                if (lastSentTime.TryGetValue(key, out var t) && clock - t < NetConfig.PerKeyMinInterval)
+                // 同じキーは前回から一定時間あける。大きなキー（住民の全員分など）は大きさに応じて間隔を延ばす（間引き）。
+                // 間引いている間に何度 MarkDirty されても、次に送る時の最新の状態1回にまとまる。
+                float interval = keyInterval.TryGetValue(key, out var ki) ? ki : NetConfig.PerKeyMinInterval;
+                if (lastSentTime.TryGetValue(key, out var t) && clock - t < interval)
                 {
                     keep.Add(key);
                     continue;
                 }
                 string json = Game.CapturePlanetState(key);
                 if (json == null) continue;
+                keyInterval[key] = Mathf.Clamp(json.Length / NetConfig.LargeKeyBytesPerSecond, NetConfig.PerKeyMinInterval, NetConfig.PerKeyMaxInterval);
                 ulong h = StableHash.Fnv1a64(json);
                 lastSentTime[key] = clock;
                 if (lastSentHash.TryGetValue(key, out var prev) && prev == h) continue; // 変化なし
@@ -348,7 +355,15 @@ namespace Uchujin.Network
         private void HandleHello(string netId, HelloMsg hello)
         {
             if (hello == null) return;
-            if (!pendingPeers.ContainsKey(netId) && FindPlayerByNet(netId) != null) return; // 重複
+            var sameConnection = FindPlayerByNet(netId);
+            if (!pendingPeers.ContainsKey(netId) && sameConnection != null)
+            {
+                // 同じ接続から別のプレイヤーを名乗る挨拶は受け付けない
+                if (sameConnection.PlayerId != hello.playerId) return;
+                // 同じプレイヤーが同じ接続のまま挨拶し直した＝ゲストが再起動・参加し直した
+                // （EOS は相手が落ちても接続が残っていることがあり、切断通知なしで新しい挨拶が届く）。
+                // 無視するとゲストは参加承認を待ったまま時間切れになるので、下の「繋ぎ直し」として受け付ける。
+            }
             if (hello.protocol != NetConfig.ProtocolVersion)
             {
                 Reject(netId, "ゲームのバージョンが違います", "Game version mismatch");
@@ -574,7 +589,8 @@ namespace Uchujin.Network
                 commandId = cmd.commandId,
                 success = result != null && result.Success,
                 ja = result?.MessageJa,
-                en = result?.MessageEn
+                en = result?.MessageEn,
+                data = result?.Data
             };
             sp.Commands.Add(cmd.commandId, msg);
             SendTo(sp, NetMsg.CommandResult, msg);

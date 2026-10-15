@@ -41,6 +41,12 @@ namespace Uchujin.Network
         private float profileTimer;
         private float autosaveTimer;
         private int lastAppliedSeq;
+        /// <summary>
+        /// まだホストへ返していない受領確認。持ち物と受領台帳を自分のスロットへ保存してから返す
+        /// （保存前に異常終了しても、ホストの未受領 Tx が残って次の訪問で再送される＝受け取り損ねない）。
+        /// </summary>
+        private readonly List<TxAckMsg> pendingAcks = new List<TxAckMsg>();
+        private float ackWaitTimer;
 
         /// <summary>EOS のロビー一覧を見るためだけに作ったトランスポート（参加時にそのまま使う）。</summary>
         private INetTransport browseTransport;
@@ -157,6 +163,8 @@ namespace Uchujin.Network
             lastAppliedSeq = 0;
             profileDirty = false;
             autosaveTimer = 0f;
+            pendingAcks.Clear();
+            ackWaitTimer = 0f;
             hostPlayerId = null;
             hostName = null;
         }
@@ -270,14 +278,18 @@ namespace Uchujin.Network
                     var m = NetCodec.Parse<StateEntriesMsg>(body);
                     if (m?.entries == null) return;
                     if (Session == SessionState.GuestPlaying) ApplyStateEntries(m.entries);
-                    else bufferedDeltas.AddRange(m.entries); // 読み込み中は溜めておき、読み込み後に順に適用
+                    else BufferDeltas(m.entries); // 読み込み中は溜めておき、読み込み後に適用
                     return;
                 }
                 case NetMsg.CommandResult:
                 {
                     var m = NetCodec.Parse<CommandResultMsg>(body);
                     if (m == null) return;
-                    var r = m.success ? CommandResult.Ok(m.ja, m.en) : CommandResult.Fail(m.ja, m.en);
+                    // JsonUtility は null の文字列を "" にするので、ホストでの null（メッセージなし）に戻す
+                    string ja = string.IsNullOrEmpty(m.ja) ? null : m.ja;
+                    string en = string.IsNullOrEmpty(m.en) ? null : m.en;
+                    var r = m.success ? CommandResult.Ok(ja, en) : CommandResult.Fail(ja, en);
+                    r.Data = string.IsNullOrEmpty(m.data) ? null : m.data;
                     WorldAuthority.CompletePending(m.commandId, r);
                     return;
                 }
@@ -417,6 +429,20 @@ namespace Uchujin.Network
                 hostName ?? "?", PermissionLabel(assignedPermission)));
         }
 
+        /// <summary>
+        /// 読み込み中に届いた差分を溜める。各エントリはそのキーの状態「全体」なので、同じキーは最新の1つだけ残す
+        /// （住民など約1秒ごとに届く大きな状態を読み込み時間ぶん溜め込み、読み込み後に何度も RestoreState しないため）。
+        /// </summary>
+        private void BufferDeltas(List<SaveEntry> entries)
+        {
+            foreach (var e in entries)
+            {
+                if (e == null || string.IsNullOrEmpty(e.key)) continue;
+                bufferedDeltas.RemoveAll(x => x.key == e.key);
+                bufferedDeltas.Add(e);
+            }
+        }
+
         private void ApplyStateEntries(List<SaveEntry> entries)
         {
             foreach (var e in entries)
@@ -478,16 +504,24 @@ namespace Uchujin.Network
 
         private void GuestUpdate(float dt)
         {
+            // 切断の通知が来ないままトランスポートが閉じた・失敗した場合の保険（そのままだと訪問中のまま取り残される）
+            if (transport == null || transport.State == TransportState.Failed || transport.State == TransportState.Closed)
+            {
+                GuestOnHostDisconnected(transport != null ? transport.StatusText : null);
+                return;
+            }
             if (profileDirty)
             {
                 profileTimer += dt;
                 if (profileTimer >= NetConfig.ProfileUpdateDebounce) SendProfileUpdate();
             }
             autosaveTimer += dt;
-            if (autosaveTimer >= NetConfig.GuestProfileAutosaveSeconds)
+            if (pendingAcks.Count > 0) ackWaitTimer += dt;
+            if (autosaveTimer >= NetConfig.GuestProfileAutosaveSeconds || ackWaitTimer >= NetConfig.TxAckSaveDelay)
             {
                 autosaveTimer = 0f;
-                WriteHomeProfile();
+                ackWaitTimer = 0f; // 保存に失敗しても毎フレーム書き込まないように
+                WriteHomeProfile(); // 保存できたら受領確認も返す
             }
         }
 
@@ -553,7 +587,8 @@ namespace Uchujin.Network
                 }
                 RecordTxApplied(tx.txId);
             }
-            SendToHost(NetMsg.TxAck, new TxAckMsg { txId = tx.txId, ok = ok });
+            // 受領確認は持ち物を自分のスロットへ保存した後に返す（WriteHomeProfile → FlushTxAcks）
+            pendingAcks.Add(new TxAckMsg { txId = tx.txId, ok = ok });
             SendProfileUpdate();
         }
 
@@ -627,8 +662,9 @@ namespace Uchujin.Network
             bool loaded = Session == SessionState.GuestPlaying || (Session == SessionState.GuestLoading && guestBeginRequested);
             try
             {
-                // 1. 訪問先での自分の知識（辞書など）は訪問先ごとに保存（Role がまだ Guest のうちに）
-                if (loaded && WorldAuthority.IsGuest && Game.Planet != null) Game.SaveGame(false);
+                // 1. 訪問先での自分の知識（辞書など）は訪問先ごとに保存（Role がまだ Guest のうちに）。
+                //    読み込みの途中（GuestLoading）では訪問用の知識がまだ読み込まれていないことがあり、空で上書きしてしまうので保存しない。
+                if (Session == SessionState.GuestPlaying && WorldAuthority.IsGuest && Game.Planet != null) Game.SaveGame(false);
                 // 2. 交換の途中なら不成立として預け物を戻す（マルチ §20.5）
                 CloseLocalTradeUI();
                 RollbackAllEscrows();
@@ -636,7 +672,7 @@ namespace Uchujin.Network
                 if (loaded) WriteHomeProfile();
                 // 4. 退出を伝えて切断
                 if (notifyHost) SendToHost(NetMsg.Leave, new LeaveMsg { reason = "leave" });
-                CloseSleepVoteUI();
+                ResetSleepVoteState();
                 ShutdownTransport();
                 ClearSessionPlayers(true);
                 Session = SessionState.None;
@@ -666,10 +702,13 @@ namespace Uchujin.Network
             if (!string.IsNullOrEmpty(messageJa)) UIManager.Message(Loc.T("マルチプレイ", "Multiplayer"), Loc.T(messageJa, messageEn));
         }
 
-        /// <summary>持ち物（PlayerProfile）を自分のスロットへ保存する。そのスロットの星の知識は残す。</summary>
-        private void WriteHomeProfile()
+        /// <summary>
+        /// 持ち物（PlayerProfile）を自分のスロットへ保存する。そのスロットの星の知識は残す。
+        /// 保存できたら、それまでに受け取った Tx の受領確認をホストへ返す（受領台帳と持ち物が同じファイルに入ってから）。
+        /// </summary>
+        private bool WriteHomeProfile()
         {
-            if (string.IsNullOrEmpty(homeSlotId) || Game == null || Game.LocalPlayer == null) return;
+            if (string.IsNullOrEmpty(homeSlotId) || Game == null || Game.LocalPlayer == null) return false;
             try
             {
                 var file = Game.Saves.ReadPlayer(homeSlotId, LocalId) ?? new PlayerSaveFile { playerId = LocalId };
@@ -681,7 +720,20 @@ namespace Uchujin.Network
             {
                 Debug.LogException(e);
                 UIManager.Toast(Loc.T("持ち物の保存に失敗しました", "Failed to save your belongings"));
+                return false;
             }
+            FlushTxAcks();
+            return true;
+        }
+
+        private void FlushTxAcks()
+        {
+            ackWaitTimer = 0f;
+            if (pendingAcks.Count == 0) return;
+            if (transport != null && transport.HostPeerId != null)
+                foreach (var a in pendingAcks) SendToHost(NetMsg.TxAck, a);
+            // 送れなかった分（切断済み）はホストの未受領として残り、次の訪問で再送される。台帳があるので二重受領はしない。
+            pendingAcks.Clear();
         }
 
         /// <summary>タイトルから参加する時：選んだセーブの主人公（持ち物・見た目）を読み込む。</summary>

@@ -123,6 +123,8 @@ namespace Uchujin.Network
         public bool success;
         public string ja;
         public string en;
+        /// <summary>CommandResult.Data（モジュールが結果に付ける追加データ）。</summary>
+        public string data;
     }
 
     public enum TxKind

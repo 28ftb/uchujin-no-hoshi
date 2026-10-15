@@ -136,7 +136,14 @@ namespace Uchujin.Network
         private void CancelSleepVote()
         {
             hostVote = null;
+            ResetSleepVoteState();
+        }
+
+        /// <summary>セッション終了時：投票ウィンドウと「返事待ち」の表示を片付ける（次のセッションに残さない）。</summary>
+        private void ResetSleepVoteState()
+        {
             CloseSleepVoteUI();
+            WaitingSleepVoteId = null;
         }
 
         private void SleepUpdate()
