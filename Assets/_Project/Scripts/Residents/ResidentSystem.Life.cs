@@ -233,7 +233,9 @@ namespace Uchujin.Residents
         private string ShopDestKind(SeededRandom rng)
         {
             var shop = Game.Service<IShopService>();
-            if (shop != null && shop.IsOpen && rng.Chance(ResidentTuning.PlayerShopPreference)) return "shop";
+            // 予定は 0:00（日付更新時）に立てるので、その時点の IsOpen（閉店中）では判断しない。
+            // 営業しているか・商品があるかは、買い物の予定を始める時（StartBlock）に確かめる。
+            if (shop != null && rng.Chance(ResidentTuning.PlayerShopPreference)) return "shop";
             return "village_store";
         }
 
@@ -702,7 +704,14 @@ namespace Uchujin.Residents
             var b = st.plan[idx];
             st.blockIndex = idx;
             st.arrived = false;
-            st.blockActionDone = false;
+            // 同じ予定をやり直す（会話・RequestGoTo・雨宿りの後など）ときは、済ませた到着時の行動を繰り返さない
+            st.blockActionDone = st.actionDoneKey != null && st.actionDoneKey == BlockActionKey(b);
+            if (b.activity == ResidentActivity.Shopping && b.destKind == "shop" && !st.blockActionDone)
+            {
+                // 主人公の商店が閉まっている・何も並んでいない時は、村の雑貨屋へ行く（営業時間は看板で分かる）
+                var shop = Game.Service<IShopService>();
+                if (shop == null || !shop.IsOpen || shop.OfferCount == 0) b.destKind = "village_store";
+            }
             st.activity = b.activity;
             st.activityTarget = b.destId;
             st.carrying = b.activity == ResidentActivity.Packing;
@@ -878,9 +887,25 @@ namespace Uchujin.Residents
 
         // ---------------- 到着時・滞在中の行動 ----------------
 
+        private string BlockActionKey(ScheduleBlock b) => Today + ":" + b.start + ":" + (int)b.activity;
+
         private void OnArrive(Resident r)
         {
             var st = r.State;
+            // RequestGoTo（行事・演出・商店の立ち寄り）・手招き・雨宿りの行き先に着いただけ。
+            // ここで予定の到着時の行動（買い物＝ResidentVisit など）をすると、店から離れた場所で来店処理が走ったり、
+            // 雨宿りの状態が予定の行動で上書きされたりするので、予定の行動は行わない（終われば予定をやり直す）。
+            if (st.hasGoTo || !string.IsNullOrEmpty(st.followPlayerId))
+            {
+                SyncAvatar(r);
+                return;
+            }
+            if (st.activity == ResidentActivity.ShelteringFromRain)
+            {
+                st.arrived = true; // 同じ軒下での立ち話のきっかけ（SocialTick は arrived を見る）
+                SyncAvatar(r);
+                return;
+            }
             st.arrived = true;
             if (st.blockIndex < 0 || st.blockIndex >= st.plan.Count) return;
             var b = st.plan[st.blockIndex];
@@ -908,6 +933,12 @@ namespace Uchujin.Residents
         private void DoArrivalAction(Resident r, ScheduleBlock b)
         {
             if (r.State.blockActionDone) return;
+            DoArrivalActionInner(r, b);
+            if (r.State.blockActionDone) r.State.actionDoneKey = BlockActionKey(b);
+        }
+
+        private void DoArrivalActionInner(Resident r, ScheduleBlock b)
+        {
             var st = r.State;
             int day = Today;
             switch (b.activity)

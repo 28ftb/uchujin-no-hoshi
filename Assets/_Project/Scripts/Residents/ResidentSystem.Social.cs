@@ -12,6 +12,7 @@ namespace Uchujin.Residents
     {
         private string conversationResidentId;
         private bool suppressGestureEvent;
+        private readonly Dictionary<string, int> questSpokeFrame = new Dictionary<string, int>();
         private readonly HashSet<string> observedKeys = new HashSet<string>();
         private int socialAccumulator;
 
@@ -177,7 +178,9 @@ namespace Uchujin.Residents
                 rep.shopSalesRecentDay = Today;
             }
             if (r == null) return;
-            r.AddMemory(new ResidentMemoryEntry { kind = "bought_from_shop", playerId = e.ShopOwnerId, itemId = e.ItemId, day = Today, importance = 0.5f, detail = e.Price.ToString() });
+            // ShopItemSoldEvent は1個ごとに届き、Shop も AddMemory(bought_from_shop) を呼ぶので、同じ日・同じ品は1件にまとめる
+            if (!HasShopMemory(r, e.ShopOwnerId, e.ItemId, Today))
+                r.AddMemory(new ResidentMemoryEntry { kind = "bought_from_shop", playerId = e.ShopOwnerId, itemId = e.ItemId, day = Today, importance = 0.5f, detail = e.Price.ToString() });
             if (r.State.lastBoughtDay != Today || r.State.lastBoughtItemId != e.ItemId)
             {
                 r.State.lastBoughtItemId = e.ItemId;
@@ -195,6 +198,15 @@ namespace Uchujin.Residents
                 }
             }
             MarkDirty();
+        }
+
+        internal const string QuestEventMemoryPrefix = "event:";
+
+        internal static bool HasShopMemory(Resident r, string playerId, string itemId, int day)
+        {
+            foreach (var m in r.State.memories)
+                if (m.kind == "bought_from_shop" && m.day == day && m.itemId == itemId && m.playerId == playerId) return true;
+            return false;
         }
 
         private void OnRocketRepaired(RocketDeviceRepairedEvent e)
@@ -225,7 +237,8 @@ namespace Uchujin.Residents
             if (!IsAuthority || e.Status != QuestStatus.Completed) return;
             var r = GetResident(e.ResidentId);
             if (r == null) return;
-            Remember(r, "quest_done", e.PlayerId, null, 0.8f, false);
+            // Quests は完了時に自分でも AddMemory(quest_done) を呼ぶ（その場合はそちらの詳しい記憶に置き換える：AddMemory 側）
+            r.AddMemory(new ResidentMemoryEntry { kind = "quest_done", playerId = e.PlayerId, day = Today, importance = 0.8f, detail = QuestEventMemoryPrefix + e.QuestId });
             var rel = r.Bond(e.PlayerId ?? "");
             rel.met = true;
             MarkDirty();
@@ -260,11 +273,14 @@ namespace Uchujin.Residents
 
         private void OnPlayerGesture(PlayerGestureEvent e)
         {
-            if (suppressGestureEvent || string.IsNullOrEmpty(e.TargetResidentId)) return;
+            if (suppressGestureEvent || e.HandledByQuest || string.IsNullOrEmpty(e.TargetResidentId)) return;
             if (Game.LocalPlayer == null || e.PlayerId != Game.LocalPlayer.PlayerId) return;
             if (conversationResidentId == e.TargetResidentId) return;
             var r = GetResident(e.TargetResidentId);
             if (r == null || r.Avatar == null || !r.Avatar.IsVisible) return;
+            // Game.PerformLocalGesture は TryHandleGesture の結果に関わらずこのイベントを出す。
+            // クエストがこの身振りを依頼への返事として処理し、同じフレームでその住民に話させていたら、住民側の反応は重ねない。
+            if (questSpokeFrame.TryGetValue(r.Id, out var qf) && qf == UnityEngine.Time.frameCount) return;
             // 会話ウィンドウの外での身振り（Game.PerformLocalGesture が既にクエストへ渡している）
             WorldAuthority.Submit(new ResidentGestureCommand { residentId = r.Id, gesture = (int)e.Gesture, skipQuest = true }, res =>
             {
@@ -620,6 +636,8 @@ namespace Uchujin.Residents
                     if (o == null || o.State.chatPartnerId != r.Id || string.CompareOrdinal(r.Id, o.Id) > 0) continue;
                     if (dist > ResidentTuning.HearChatRadius || o.Id == conversationResidentId) continue;
                     if (now < r.nextChatLineTime) continue;
+                    // ホストの主人公も近くにいれば、ホストが話させた発話が Language の中継で届く（ここでも作ると二重になる）
+                    if (HostVoicesNear(r.Avatar.transform.position, ResidentTuning.HearChatRadius)) continue;
                     var speaker = (r.chatTurn / 2) % 2 == 0 ? r : o;
                     var listener = speaker == r ? o : r;
                     if (r.chatTurn % 2 == 0)
@@ -653,7 +671,7 @@ namespace Uchujin.Residents
                 }
 
                 // ---- 独り言 ----
-                if (dist < ResidentTuning.SelfTalkRadius && now >= r.nextSelfTalkTime)
+                if (dist < ResidentTuning.SelfTalkRadius && now >= r.nextSelfTalkTime && !HostVoicesNear(r.Avatar.transform.position, ResidentTuning.SelfTalkRadius))
                 {
                     r.nextSelfTalkTime = now + ResidentTuning.SelfTalkInterval * fxRng.Range(0.7f, 1.4f);
                     if (fxRng.Chance(0.45f + r.P.talkativeness * 0.3f))
@@ -663,6 +681,18 @@ namespace Uchujin.Residents
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// ゲスト：その場所の近くにホストの主人公がいるか。ホストは自分の近くの住民の立ち話・独り言を生成し、
+        /// ISpeechService.Speak がゲストへ中継するので、ゲスト側でも生成すると同じ場面の発話が二重になる。
+        /// </summary>
+        private bool HostVoicesNear(Vector3 pos, float radius)
+        {
+            if (!WorldAuthority.IsGuest || Game.Planet == null || string.IsNullOrEmpty(Game.Planet.hostPlayerId)) return false;
+            var host = Game.Players.Get(Game.Planet.hostPlayerId);
+            if (host == null || host.IsLocal || host.CurrentAreaId != AreaIds.Overworld) return false;
+            return ResidentUtil.FlatDistance(host.Position, pos) <= radius;
         }
 
         // ---------------- 日々の変化 ----------------

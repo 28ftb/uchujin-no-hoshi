@@ -99,7 +99,7 @@ namespace Uchujin.Quests
             };
             S.helps.Add(h);
             // 住民は荷物のそばで困っている（重そうに持ち上げようとする）
-            GoTo(r.Id, start + new Vector3(0.8f, 0f, 0.6f), Mathf.Min(Minute + 60, TimeSystem.MinutesPerDay - 1), "quest.help.carry");
+            GoTo(r.Id, start + new Vector3(0.8f, 0f, 0.6f), Minute + 60, "quest.help.carry");
             return h;
         }
 
@@ -205,7 +205,7 @@ namespace Uchujin.Quests
                     {
                         case HelpKind.CarryLoad:
                             // 住民が先に立って目的地へ歩く（言葉なしで行き先が分かる）
-                            GoTo(h.residentId, h.target + new Vector3(1.2f, 0f, 0.8f), Mathf.Min(Minute + 120, TimeSystem.MinutesPerDay - 1), "quest.help.carry");
+                            GoTo(h.residentId, h.target + new Vector3(1.2f, 0f, 0.8f), Minute + 120, "quest.help.carry");
                             break;
                         case HelpKind.LostItem:
                             ctx.GiveItem(new ItemStack(h.itemId, 1) { data = QuestItemIds.DataLostPrefix + h.id + "|" + h.residentId }, "found_on_road");

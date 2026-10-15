@@ -134,7 +134,9 @@ namespace Uchujin.Network
         Charge = 3,
         PayMoney = 4,
         TradeCommit = 5,
-        TradeAbort = 6
+        TradeAbort = 6,
+        /// <summary>品質・データまで一致する物を取る（stack と count を使う）。</summary>
+        TakeItemExact = 7
     }
 
     /// <summary>

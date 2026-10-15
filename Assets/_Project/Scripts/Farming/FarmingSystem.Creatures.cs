@@ -446,6 +446,7 @@ namespace Uchujin.Farming
                 return;
             }
             if ((hour != 10 && hour != 15) || lastVisitDay == day) return;
+            if (Game.State != GameState.Playing) return; // 演出中（プロローグ等）は住民を呼ばない
             string topic = PickVisitTopic();
             if (topic == null) return;
             var rng = SeededRandom.For(Game.Planet.seed, "farm.visit." + day + "." + hour);

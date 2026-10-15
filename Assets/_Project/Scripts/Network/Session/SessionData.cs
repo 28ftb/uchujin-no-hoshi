@@ -72,6 +72,7 @@ namespace Uchujin.Network
                         if (t.stack != null && t.stack.itemId == itemId) n += t.stack.count;
                         break;
                     case TxKind.TakeItem:
+                    case TxKind.TakeItemExact:
                         if (t.itemId == itemId) n -= t.count;
                         break;
                     case TxKind.TradeCommit:
@@ -91,6 +92,7 @@ namespace Uchujin.Network
             {
                 if (t.kind == TxKind.GrantItem && t.stack != null && t.stack.CanStackWith(like)) n += t.stack.count;
                 else if (t.kind == TxKind.TakeItem && t.itemId == like.itemId) n -= t.count;
+                else if (t.kind == TxKind.TakeItemExact && t.stack != null && t.stack.CanStackWith(like)) n -= t.count;
                 else if (t.kind == TxKind.TradeCommit && t.give != null)
                     foreach (var s in t.give) if (s != null && s.CanStackWith(like)) n += s.count;
             }

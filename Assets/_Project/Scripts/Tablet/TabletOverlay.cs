@@ -33,11 +33,13 @@ namespace Uchujin.Tablet
 
             if (TabletSettings.ShowPinnedOverlay) DrawPinned();
 
-            if (sys.LastHeard != null && TabletSettings.QuickSaveKeyEnabled && !UIManager.AnyModalOpen)
+            if (sys.LastHeard != null && TabletSettings.QuickSaveKeyEnabled && sys.QuickSaveKeyAllowed)
             {
                 string text = Loc.Format("[{0}] 今の声を音声カードに保存", "[{0}] Save that voice as a card", TabletTuning.QuickSaveKey);
                 var size = UIStyles.LabelSmall.CalcSize(new GUIContent(text));
-                var r = new Rect((vw - size.x) * 0.5f - 12, vh - 180, size.x + 24, 34);
+                // 会話ウィンドウ（画面下部）などのモーダルが開いている時は、隠れないよう画面上部に出す
+                float hintY = UIManager.AnyModalOpen ? 96f : vh - 180f;
+                var r = new Rect((vw - size.x) * 0.5f - 12, hintY, size.x + 24, 34);
                 UIStyles.FillRect(r, new Color(0.05f, 0.07f, 0.12f, 0.75f));
                 GUI.Label(new Rect(r.x + 12, r.y + 4, size.x + 4, 28), text, UIStyles.LabelSmall);
             }

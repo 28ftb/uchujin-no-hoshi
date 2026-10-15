@@ -185,7 +185,10 @@ namespace Uchujin.Quests
         internal void GoTo(string residentId, Vector3 pos, int untilMinute, string tag)
         {
             if (!IsActiveResident(residentId)) return;
-            try { Dir?.RequestGoTo(residentId, Ground(pos), Mathf.Clamp(untilMinute, 0, TimeSystem.MinutesPerDay - 1), tag); }
+            // 日をまたぐ時刻は翌日の同時刻として渡す（RequestGoTo は「今より前の時刻」を翌日扱いにする。
+            // 上限 23:59 に丸めると、23:59 に呼んだ時に丸1日留まってしまう）
+            int until = ((untilMinute % TimeSystem.MinutesPerDay) + TimeSystem.MinutesPerDay) % TimeSystem.MinutesPerDay;
+            try { Dir?.RequestGoTo(residentId, Ground(pos), until, tag); }
             catch (Exception e) { Debug.LogException(e); }
         }
 

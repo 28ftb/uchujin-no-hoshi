@@ -102,6 +102,8 @@ namespace Uchujin.Shop
         public const int DropInMaxPerCheck = 2;
         /// <summary>同じ住民が再び立ち寄るまでの最短間隔（ゲーム内分）。</summary>
         public const int RevisitCooldownMinutes = 180;
+        /// <summary>住民モジュール等からの来店（ResidentVisit）で、この分数以内の再来店は同じ来店として扱う（二重来店の防止）。</summary>
+        public const int ExternalRevisitMinutes = 30;
         /// <summary>立ち寄りの住民が入口に着くのを待つ最長時間（ゲーム内分）。</summary>
         public const int DropInDeadlineMinutes = 60;
         /// <summary>来店後に棚の前へ歩いて品定めする演出（住民モジュールの RequestGoTo を使う）。</summary>

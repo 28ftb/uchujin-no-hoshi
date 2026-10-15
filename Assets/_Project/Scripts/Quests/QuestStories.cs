@@ -174,7 +174,8 @@ namespace Uchujin.Quests
                 var shop = sys.Game.Service<IShopService>();
                 if (shop != null && shop.IsOpen && shop.OfferCount > 0)
                 {
-                    if (hour == 10) sys.GoTo(st.residentId, shop.EntrancePosition, 10 * 60 + 50, "story.blue_flower.shop");
+                    // 11時の来店処理まで店の前に留まる（10:50 で解くと、11時には店から離れた場所で来店処理をしてしまう）
+                    if (hour == 10) sys.GoTo(st.residentId, shop.EntrancePosition, 11 * 60 + 10, "story.blue_flower.shop");
                     if (hour == 11 && !st.HasFlag("shop:" + day))
                     {
                         st.SetFlag("shop:" + day);
@@ -592,7 +593,7 @@ namespace Uchujin.Quests
                     st.value = Mathf.Round(typical * rng.Range(0.7f, 1.2f));
                     st.value2 = 0f;
                     var m = sys.R(st.residentId);
-                    if (m != null) sys.GoTo(st.residentId, SpotNear(sys, m.Position), Mathf.Min(sys.Minute + QuestTuning.FishingContestMinutes, TimeSystem.MinutesPerDay - 1), "story.fishing_master.contest");
+                    if (m != null) sys.GoTo(st.residentId, SpotNear(sys, m.Position), sys.Minute + QuestTuning.FishingContestMinutes, "story.fishing_master.contest");
                     break;
                 }
                 case "ask_memory":
@@ -1027,7 +1028,7 @@ namespace Uchujin.Quests
 
         public override void OnQuestAccepted(QuestSystem sys, StoryState st, QuestInstance q, CommandContext ctx)
         {
-            if (st.stage == 1) sys.GoTo(st.residentId, sys.RocketPos() + new Vector3(3f, 0f, 2f), Mathf.Min(sys.Minute + 120, TimeSystem.MinutesPerDay - 1), "story.traveler.escort");
+            if (st.stage == 1) sys.GoTo(st.residentId, sys.RocketPos() + new Vector3(3f, 0f, 2f), sys.Minute + 120, "story.traveler.escort");
         }
 
         public override void LocalCheck(QuestSystem sys, StoryState st)

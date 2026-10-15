@@ -191,8 +191,9 @@ namespace Uchujin.Tablet
             var fac = layout.GetFacility(FacilityType.MessagePlaza);
             if (fac == null) return;
             var rot = Quaternion.Euler(0f, fac.rotationY, 0f);
-            var pos = fac.position + rot * new Vector3(1.4f, 0f, 0.6f);
-            pos.y = layout.HeightAt(pos);
+            // World（StructureBuilder.MessagePlaza）が施設の位置・向きに作る止まり木（ローカル (0, 0.75, -0.4) の柱、
+            // 天面 y≈1.56 の輪 PerchRing）の上に乗せる。地面に置くと台座（高さ0.2）に足が埋まり、止まり木にも乗らない。
+            var pos = fac.position + rot * new Vector3(0f, 1.56f, -0.4f);
             var go = SpawnManepi(PlazaBoardId, null, pos, "伝言広場", "Message Plaza");
             if (go != null) go.transform.rotation = rot;
         }

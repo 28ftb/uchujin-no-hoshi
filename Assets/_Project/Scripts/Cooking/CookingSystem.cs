@@ -150,16 +150,7 @@ namespace Uchujin.Cooking
             }
             if (eatHandler != null) ToolUseRouter.Unregister(eatHandler);
             if (effectOverlay != null) UIManager.UnregisterOverlay(effectOverlay);
-            // §14【提案】：この星で作れるようになったレシピを次の星へ持ち越す
-            if (CookingTuning.CarryRecipesAcrossPlanets)
-            {
-                foreach (var kv in knowledge)
-                {
-                    var prof = Profile(kv.Key);
-                    foreach (var rec in kv.Value.recipes)
-                        if (rec.timesMade > 0 && !prof.carriedRecipes.Contains(rec.recipeId)) prof.carriedRecipes.Add(rec.recipeId);
-                }
-            }
+            FoldCarriedRecipes();
             planet = new CookingPlanetData();
             knowledge.Clear();
             communityView = null;
@@ -241,8 +232,22 @@ namespace Uchujin.Cooking
         // セーブ
         // =================================================================
 
+        /// <summary>§14【提案】：この星で作れるようになったレシピを、持ち歩く記録（Profile）へまとめて次の星へ持ち越す。</summary>
+        private void FoldCarriedRecipes()
+        {
+            if (!CookingTuning.CarryRecipesAcrossPlanets) return;
+            foreach (var kv in knowledge)
+            {
+                var prof = Profile(kv.Key);
+                foreach (var rec in kv.Value.recipes)
+                    if (rec.timesMade > 0 && !prof.carriedRecipes.Contains(rec.recipeId)) prof.carriedRecipes.Add(rec.recipeId);
+            }
+        }
+
         public override string CaptureState(SaveScope scope, string playerId)
         {
+            // 訪問先から帰る時（ゲストの保存は Teardown より前）にも持ち越しが失われないよう、保存の度にまとめる
+            if (scope == SaveScope.PlayerProfile) FoldCarriedRecipes();
             switch (scope)
             {
                 case SaveScope.Planet:

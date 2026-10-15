@@ -141,6 +141,40 @@ namespace Uchujin.Core
             return removed;
         }
 
+        /// <summary>品質・データ・所有者まで一致する数。</summary>
+        public int CountExact(ItemStack like)
+        {
+            if (like == null || like.IsEmpty) return 0;
+            var probe = like.CloneWithCount(1);
+            int n = 0;
+            foreach (var s in slots) if (s != null && !s.IsEmpty && s.CanStackWith(probe)) n += s.count;
+            return n;
+        }
+
+        /// <summary>品質・データ・所有者まで一致する物を count 個取り除き、取り除いた束（大きさは最大値）を返す。足りなければ何もせず null。</summary>
+        public ItemStack RemoveExact(ItemStack like, int count, string reason = null)
+        {
+            if (like == null || like.IsEmpty || count <= 0 || CountExact(like) < count) return null;
+            var probe = like.CloneWithCount(1);
+            ItemStack result = null;
+            int left = count;
+            for (int i = 0; i < slots.Count && left > 0; i++)
+            {
+                var s = slots[i];
+                if (s == null || s.IsEmpty || !s.CanStackWith(probe)) continue;
+                var taken = TakeFromSlot(i, left, reason);
+                if (taken == null) continue;
+                left -= taken.count;
+                if (result == null) result = taken;
+                else
+                {
+                    result.count += taken.count;
+                    if (taken.size > result.size) result.size = taken.size;
+                }
+            }
+            return result;
+        }
+
         /// <summary>スロットから取り出す。</summary>
         public ItemStack TakeFromSlot(int index, int count, string reason = null)
         {

@@ -254,6 +254,11 @@ namespace Uchujin.Residents
         public int blockIndex = -1;
         public bool arrived;
         public bool blockActionDone;
+        /// <summary>
+        /// 到着時の行動（買い物・食事・訪問など）を済ませた予定の識別（日:開始分:行動）。
+        /// 会話・RequestGoTo・手招き・雨宿りの後に同じ予定をやり直しても、買い物などを二重に行わないため。
+        /// </summary>
+        public string actionDoneKey;
         public List<Promise> promises = new List<Promise>();
 
         // ---- 目標 ----

@@ -224,7 +224,8 @@ namespace Uchujin.Housing
                 }
                 return left <= 0;
             }
-            return ctx.TakeItem(itemId, count, reason);
+            var like = new ItemStack(itemId, count, quality) { data = string.IsNullOrEmpty(data) ? null : data };
+            return ctx.TakeItemExact(like, count, reason) != null;
         }
 
         private void AfterChange()

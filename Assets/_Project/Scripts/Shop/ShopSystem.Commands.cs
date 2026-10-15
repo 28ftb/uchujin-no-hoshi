@@ -157,10 +157,9 @@ namespace Uchujin.Shop
             else if (ctx.IsLocalIssuer) taken = ctx.Issuer.Inventory.TakeFromSlot(cmd.sourceSlot, count, "shop_stock");
             else
             {
-                // リモートのゲスト：品質はゲスト側の事前確認を信頼する（コアの TakeItem は品質を指定できないため）
-                if (!ctx.HasItem(cmd.itemId, count)) return CommandResult.Fail("持ち物にその商品がありません", "You don't have that item");
-                if (!ctx.TakeItem(cmd.itemId, count, "shop_consign")) return CommandResult.Fail("持ち物から取り出せませんでした", "Couldn't take the item");
-                taken = new ItemStack(cmd.itemId, count, cmd.quality);
+                // リモートのゲスト：品質まで一致する物を取る（低品質で高品質を名乗れないように）
+                taken = ctx.TakeItemExact(new ItemStack(cmd.itemId, count, cmd.quality), count, "shop_consign");
+                if (taken == null) return CommandResult.Fail("持ち物にその商品がありません", "You don't have that item");
             }
             if (taken == null || taken.IsEmpty) return CommandResult.Fail("取り出せませんでした", "Couldn't take the item");
 

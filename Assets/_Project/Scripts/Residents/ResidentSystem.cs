@@ -156,6 +156,7 @@ namespace Uchujin.Residents
             sceneRoot = null;
             meta = new ResidentsSaveData();
             observedKeys.Clear();
+            questSpokeFrame.Clear();
             conversationResidentId = null;
         }
 
@@ -555,6 +556,15 @@ namespace Uchujin.Residents
             var r = GetResident(residentId);
             if (r == null || entry == null) return;
             if (entry.day <= 0) entry.day = Today;
+            // 商店の購入は ShopItemSoldEvent（1個ごと）でも記憶しているので、同じ日・同じ品の重複は増やさない
+            if (entry.kind == "bought_from_shop" && HasShopMemory(r, entry.playerId, entry.itemId, entry.day)) return;
+            if (entry.kind == "quest_done")
+            {
+                // QuestStateChangedEvent で先に入れた簡易の記憶（同じ日・同じプレイヤー）を、依頼側の詳しい記憶に置き換える（二重に覚えない）
+                int idx = r.State.memories.FindLastIndex(m => m.kind == "quest_done" && m.playerId == entry.playerId && m.day == entry.day
+                                                              && m.detail != null && m.detail.StartsWith(QuestEventMemoryPrefix));
+                if (idx >= 0) r.State.memories.RemoveAt(idx);
+            }
             r.AddMemory(entry);
             if (entry.kind == "quest_done" && !string.IsNullOrEmpty(entry.playerId))
             {
@@ -570,6 +580,9 @@ namespace Uchujin.Residents
             var r = GetResident(residentId);
             if (utterance == null) return null;
             if (r != null) utterance.speakerId = r.Id;
+            // クエストが身振りへの返事として話したフレームを覚える（OnPlayerGesture で住民側の反応を重ねないため）
+            if (r != null && utterance.contextTag != null && utterance.contextTag.StartsWith("quest."))
+                questSpokeFrame[r.Id] = UnityEngine.Time.frameCount;
             var speech = Game != null ? Game.Service<ISpeechService>() : null;
             UtteranceRecord rec = null;
             if (r != null && r.Avatar != null)
@@ -598,6 +611,8 @@ namespace Uchujin.Residents
         {
             var r = GetResident(residentId);
             if (r == null) return;
+            // 演出で留めている住民を、商店の立ち寄り・品定め（理由タグ shop_*）で動かさない（演出の RequestGoTo は効く）
+            if (r.State.cutsceneHold && reasonTag != null && reasonTag.StartsWith("shop_")) return;
             long dayStart = Now - MinuteOfDay;
             long until = dayStart + Mathf.Clamp(untilMinuteOfDay, 0, TimeSystem.MinutesPerDay);
             if (until <= Now) until += TimeSystem.MinutesPerDay;
@@ -859,6 +874,9 @@ namespace Uchujin.Residents
                     continue;
                 }
                 NormalizeState(e.state);
+                // セーブからの読み込み（プレイ中のゲスト同期ではない）では演出の保持を解く。
+                // 演出（Story 等）が解除を漏らしたまま保存されると、ロード後も永久に止まったままになるため。
+                if (!live) e.state.cutsceneHold = false;
                 if (residents.TryGetValue(e.id, out var existing))
                 {
                     var oldJob = existing.State.job;

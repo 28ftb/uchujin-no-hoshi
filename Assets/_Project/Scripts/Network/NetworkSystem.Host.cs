@@ -714,6 +714,15 @@ namespace Uchujin.Network
             return true;
         }
 
+        public bool TakeItemExactFromRemote(string playerId, ItemStack like, int count, string reason)
+        {
+            if (like == null || like.IsEmpty || count <= 0) return count <= 0;
+            if (!players.TryGetValue(playerId, out var sp) || sp.Mirror == null) return false;
+            if (sp.Mirror.EffectiveCountExact(like) < count) return false;
+            QueueTx(playerId, new TxMsg { kind = TxKind.TakeItemExact, stack = like.CloneWithCount(count), itemId = like.itemId, count = count, reason = reason });
+            return true;
+        }
+
         public bool RemoteHasItem(string playerId, string itemId, int count)
         {
             if (!players.TryGetValue(playerId, out var sp) || sp.Mirror == null) return false;

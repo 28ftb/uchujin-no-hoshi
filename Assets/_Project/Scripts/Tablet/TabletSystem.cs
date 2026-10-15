@@ -98,7 +98,9 @@ namespace Uchujin.Tablet
         {
             PhotoCamera?.Tick();
             if (LastHeard != null && UnityEngine.Time.unscaledTime - LastHeardTime > TabletTuning.QuickSaveWindowSeconds) LastHeard = null;
-            if (LastHeard != null && TabletSettings.QuickSaveKeyEnabled && !UIManager.BlocksGameplay
+            // 住民との会話中（会話ウィンドウはモーダル）でもワンボタンで保存できるようにする（タブレット仕様 §8.4）。
+            // 文字入力中・タブレット表示中・カメラ中だけは受け付けない。
+            if (LastHeard != null && TabletSettings.QuickSaveKeyEnabled && QuickSaveKeyAllowed
                 && GameInput.KeyDown(TabletTuning.QuickSaveKey))
             {
                 var rec = LastHeard;
@@ -106,6 +108,9 @@ namespace Uchujin.Tablet
                 SaveVoiceCard(rec, "その場で保存", "Saved on the spot");
             }
         }
+
+        /// <summary>[K] の即時保存を受け付けてよいか（会話などのモーダル中も可）。</summary>
+        internal bool QuickSaveKeyAllowed => !UIManager.TextFieldFocused && !IsOpen && (PhotoCamera == null || !PhotoCamera.Active);
 
         public override void OnDayStarted(int day)
         {
@@ -234,6 +239,32 @@ namespace Uchujin.Tablet
             AddObservation(page, "moved_out", "村から引っ越していった", "Moved away from the village", null);
         }
 
+        /// <summary>
+        /// 住民辞典の「引っ越した」印を住民ディレクトリの状態に合わせる。
+        /// ResidentMovedOutEvent はホストでしか発行されないため、ゲストはこれで同期する（引っ越しを知った日として今日を記録）。
+        /// </summary>
+        internal void SyncResidentMoves()
+        {
+            var dir = Uchujin.Core.Game.Instance?.Service<IResidentDirectory>();
+            if (dir == null || Know?.residents == null) return;
+            HashSet<string> former = null;
+            foreach (var page in Know.residents)
+            {
+                if (page == null || page.movedOut || string.IsNullOrEmpty(page.residentId)) continue;
+                var info = dir.Get(page.residentId);
+                if (info == null || info.IsActive) continue;
+                if (former == null)
+                {
+                    former = new HashSet<string>();
+                    foreach (var f in dir.FormerResidents) if (f != null) former.Add(f.Id);
+                }
+                if (!former.Contains(page.residentId)) continue;
+                page.movedOut = true;
+                page.movedOutDay = Today;
+                AddObservation(page, "moved_out", "村から引っ越していった", "Moved away from the village", null);
+            }
+        }
+
         private void OnResidentMovedIn(ResidentMovedInEvent e)
         {
             var page = FindResidentPage(e.ResidentId);
@@ -328,6 +359,7 @@ namespace Uchujin.Tablet
             if (PhotoCamera != null && PhotoCamera.Active) PhotoCamera.Cancel(false);
             if (window == null) window = new TabletWindow(this);
             bool wasOpen = window.IsOpen;
+            if (!wasOpen) SyncResidentMoves();
             if (!wasOpen) UIManager.Open(window);
             window.Navigate(appId);
             if (!wasOpen) EventBus.Publish(new TabletOpenedEvent { AppId = window.CurrentAppId ?? "home" });

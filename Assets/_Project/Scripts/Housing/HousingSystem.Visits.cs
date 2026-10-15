@@ -1098,7 +1098,7 @@ namespace Uchujin.Housing
                 float s = (r.Job == ResidentJob.Florist ? 0.6f : 0f) + (flowerDef != null ? SafeEvaluate(r, flowerDef) : 0f) + rng.Range(0f, 0.3f);
                 if (s > best) { best = s; pick = r; }
             }
-            if (pick == null) return;
+            if (pick == null || Game.State != GameState.Playing) return; // 演出中は住民を呼ばない
             var spec2 = HouseGeometry.Resolve(bench);
             var pos = HouseGeometry.FurniturePosition(state, Layout, bench, spec2, out float yaw);
             var front = pos + Quaternion.Euler(0, yaw, 0) * Vector3.forward * 0.8f;

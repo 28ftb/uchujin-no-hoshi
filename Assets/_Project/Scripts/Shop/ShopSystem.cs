@@ -467,6 +467,8 @@ namespace Uchujin.Shop
         private void TryDropIns()
         {
             if (!IsOpen || OfferCount == 0 || Frame == null) return;
+            // プロローグ・エンディング等の演出中（Playing 以外）は立ち寄りを起こさない（演出中の住民を動かさない）
+            if (Game == null || Game.State != GameState.Playing) return;
             var dir = Game.Service<IResidentDirectory>();
             if (dir == null) return;
             int sign = Data.Level(ShopUpgradeIds.Sign);
@@ -493,7 +495,7 @@ namespace Uchujin.Shop
                 var rng = SeededRandom.For(Seed, "shop.dropin:" + r.Id + ":" + now);
                 if (!rng.Chance(chance)) continue;
                 dropIns.Add(new PendingDropIn { residentId = r.Id, deadline = now + ShopConfig.DropInDeadlineMinutes });
-                dir.RequestGoTo(r.Id, Frame.Entrance, Mathf.Min(TimeSystem.MinutesPerDay - 1, Clock.MinuteOfDay + ShopConfig.DropInDeadlineMinutes), "shop_visit");
+                dir.RequestGoTo(r.Id, Frame.Entrance, (Clock.MinuteOfDay + ShopConfig.DropInDeadlineMinutes) % TimeSystem.MinutesPerDay, "shop_visit");
                 started++;
             }
         }
@@ -537,9 +539,11 @@ namespace Uchujin.Shop
                 }
                 var d = r.Position - Frame.Entrance;
                 d.y = 0f;
-                if (d.sqrMagnitude > 2.5f * 2.5f && now < p.deadline) continue;
+                bool arrived = d.sqrMagnitude <= 2.5f * 2.5f;
+                if (!arrived && now < p.deadline) continue;
                 dropIns.RemoveAt(i);
-                if (!IsOpen) continue;
+                // 期限までに入口へ着けなかった住民は来店しない（店から離れた場所で来店処理をしない）
+                if (!arrived || !IsOpen) continue;
                 RunVisit(r, DefaultIntent(r), true);
             }
         }

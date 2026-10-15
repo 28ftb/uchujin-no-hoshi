@@ -671,8 +671,9 @@ namespace Uchujin.Core
                     }
                 }
             }
-            if (target != null) Service<IQuestService>()?.TryHandleGesture(target, p.PlayerId, g);
-            EventBus.Publish(new PlayerGestureEvent { PlayerId = p.PlayerId, Gesture = g, TargetResidentId = target });
+            bool handled = false;
+            if (target != null) handled = Service<IQuestService>()?.TryHandleGesture(target, p.PlayerId, g) ?? false;
+            EventBus.Publish(new PlayerGestureEvent { PlayerId = p.PlayerId, Gesture = g, TargetResidentId = target, HandledByQuest = handled });
         }
 
         private void OnGUI()

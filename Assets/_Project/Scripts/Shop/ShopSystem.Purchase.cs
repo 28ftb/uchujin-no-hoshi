@@ -35,6 +35,12 @@ namespace Uchujin.Shop
         {
             if (resident == null || !IsAuthority || Clock == null || !resident.IsActive) return new ShopVisitResult();
             Data.lastExternalVisitDay = Today;
+            // 自分で来た住民の立ち寄り待ちは取り消す（看板の立ち寄りと住民の買い物の予定が重なって二重に来店しない）
+            dropIns.RemoveAll(p => p.residentId == resident.Id);
+            // 直前に来店したばかり（立ち寄りの直後に買い物の予定で戻ってきた等）なら、同じ来店として扱う
+            var recent = Data.Memory(resident.Id);
+            if (recent.visits > 0 && Clock.TotalMinutes - recent.lastVisitTotalMinutes < ShopConfig.ExternalRevisitMinutes)
+                return new ShopVisitResult();
             if (!IsOpen)
             {
                 ReactToClosedShop(resident);
@@ -427,10 +433,17 @@ namespace Uchujin.Shop
             }
 
             // ---- 演出：棚の前で品定めする姿が外から見える ----
+            // 終了時刻は日をまたぐ場合に翌日の同時刻へ回す（RequestGoTo は過ぎた時刻を翌日扱いにするため、
+            // 23:59 などで上限に丸めると丸1日店に留まってしまう）
             if (ShopConfig.BrowseWalkEnabled && focus != null)
             {
-                int until = Mathf.Min(TimeSystem.MinutesPerDay - 1, minute + ShopConfig.BrowseMinutes);
+                int until = (minute + ShopConfig.BrowseMinutes) % TimeSystem.MinutesPerDay;
                 dir.RequestGoTo(resident.Id, SlotWorldPosition(focus.slotIndex), until, "shop_browse");
+            }
+            else if (dropIn && Frame != null)
+            {
+                // 立ち寄りの行き先指定（入口で最長 DropInDeadlineMinutes 待つ）を、来店が済んだら解く
+                dir.RequestGoTo(resident.Id, Frame.Entrance, (minute + 1) % TimeSystem.MinutesPerDay, "shop_visit_done");
             }
 
             AfterStateChanged();

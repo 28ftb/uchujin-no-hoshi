@@ -79,6 +79,15 @@ namespace Uchujin.Core
             return WorldAuthority.Bridge != null && WorldAuthority.Bridge.TakeItemFromRemote(IssuerId, itemId, count, reason);
         }
 
+        /// <summary>品質・データ（思い出の紐付け等）まで一致する物を発行者の持ち物から取る。取れた束を返す（足りなければ null）。</summary>
+        public ItemStack TakeItemExact(ItemStack like, int count, string reason)
+        {
+            if (like == null || like.IsEmpty || count <= 0) return null;
+            if (IsLocalIssuer) return Issuer.Inventory.RemoveExact(like, count, reason);
+            if (WorldAuthority.Bridge == null || !WorldAuthority.Bridge.TakeItemExactFromRemote(IssuerId, like, count, reason)) return null;
+            return like.CloneWithCount(count);
+        }
+
         public bool TryCharge(int amount, string reason)
         {
             if (amount <= 0) return true;
@@ -108,6 +117,8 @@ namespace Uchujin.Core
         void MarkDirty(string stateKey);
         void GrantItemToRemote(string playerId, ItemStack stack, string source);
         bool TakeItemFromRemote(string playerId, string itemId, int count, string reason);
+        /// <summary>品質・データまで一致する物をゲストの持ち物から取る。</summary>
+        bool TakeItemExactFromRemote(string playerId, ItemStack like, int count, string reason);
         bool RemoteHasItem(string playerId, string itemId, int count);
         bool TryChargeRemote(string playerId, int amount, string reason);
         void GrantMoneyToRemote(string playerId, int amount, string reason);

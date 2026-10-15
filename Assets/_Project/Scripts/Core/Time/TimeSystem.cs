@@ -120,6 +120,7 @@ namespace Uchujin.Core
             globalPauseTokens.Clear();
             clockHoldTokens.Clear();
             minuteAccumulator = 0f;
+            aheadOfHostMinutes = 0;
         }
 
         /// <summary>個人用の一時停止（ソロのみ有効）。タブレット・会話の読み込み中など。</summary>
@@ -144,8 +145,18 @@ namespace Uchujin.Core
                 minuteAccumulator -= 1f;
                 whole++;
             }
+            // ゲストがホストより先に進んでいた分は、追いつかれるまでローカルで進めない（巻き戻して境目を二重に越えないため）
+            if (whole > 0 && aheadOfHostMinutes > 0)
+            {
+                int skip = (int)Mathf.Min(whole, aheadOfHostMinutes);
+                aheadOfHostMinutes -= skip;
+                whole -= skip;
+            }
             if (whole > 0) AdvanceMinutes(whole);
         }
+
+        /// <summary>ゲスト：ホストの時刻より先に進んでいる分（巻き戻さずに待つ）。</summary>
+        private long aheadOfHostMinutes;
 
         /// <summary>
         /// 時間を進める。日付・時刻の境界ごとにイベントを発行し、各システムへ通知する。
@@ -203,8 +214,14 @@ namespace Uchujin.Core
         public void SyncTo(long totalMinutes)
         {
             long diff = totalMinutes - TotalMinutes;
+            aheadOfHostMinutes = 0;
             if (diff > 0 && diff < MinutesPerDay * 2) AdvanceMinutes((int)diff);
-            else TotalMinutes = totalMinutes;
+            else if (diff < 0 && -diff <= 60)
+            {
+                // 少しだけ先に進んでいる：巻き戻すと時刻・日付の境目のイベントが二重に起きるので、ホストが追いつくまで待つ
+                aheadOfHostMinutes = -diff;
+            }
+            else if (diff != 0) TotalMinutes = totalMinutes;
         }
 
         public string FormatClock() => $"{Hour:00}:{Minute:00}";

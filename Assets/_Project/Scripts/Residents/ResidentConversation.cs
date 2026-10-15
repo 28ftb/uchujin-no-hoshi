@@ -30,6 +30,11 @@ namespace Uchujin.Residents
         public string residentId;
         public string itemId;
         public int quality;
+        /// <summary>選んだ持ち物の枠（ローカルの発行者なら、その枠の物を正確に取り出す）。</summary>
+        public int slot = -1;
+        /// <summary>選んだ物の大きさ・固有データ（釣果の大きさ、預かり物・落とし物の印など。依頼の判定に必要）。</summary>
+        public float size;
+        public string data;
     }
 
     [Serializable]
@@ -141,14 +146,14 @@ namespace Uchujin.Residents
 
         // ---------------- 主人公の行動（ローカル → コマンド） ----------------
 
-        internal void PlayerGives(ResidentConversationWindow w, ItemStack stack)
+        internal void PlayerGives(ResidentConversationWindow w, int slot, ItemStack stack)
         {
             var r = w.Resident;
             string itemId = stack.itemId;
             int quality = stack.quality;
             string pid = w.Player.PlayerId;
             bool birthday = r.IsBirthday(Today);
-            WorldAuthority.Submit(new ResidentGiftCommand { residentId = r.Id, itemId = itemId, quality = quality }, res =>
+            WorldAuthority.Submit(new ResidentGiftCommand { residentId = r.Id, itemId = itemId, quality = quality, slot = slot, size = stack.size, data = stack.data }, res =>
             {
                 if (res == null || !res.Success) return;
                 string tag = res.MessageEn ?? "";
@@ -175,7 +180,8 @@ namespace Uchujin.Residents
             string itemId = stack.itemId;
             Game.PlayerSys?.LocalController?.PlayGesture(PlayerGesture.ShowItem);
             PublishOwnGesture(w.Player.PlayerId, PlayerGesture.ShowItem, r.Id);
-            WorldAuthority.Submit(new ResidentGestureCommand { residentId = r.Id, gesture = (int)PlayerGesture.ShowItem, itemId = itemId }, res =>
+            if (LocalQuestGesture(r, w.Player.PlayerId, PlayerGesture.ShowItem)) return;
+            WorldAuthority.Submit(new ResidentGestureCommand { residentId = r.Id, gesture = (int)PlayerGesture.ShowItem, itemId = itemId, skipQuest = true }, res =>
             {
                 if (res == null || !res.Success || res.MessageEn == "quest") return;
                 var u = ResidentLines.ShowItemResponse(r, itemId);
@@ -193,7 +199,8 @@ namespace Uchujin.Residents
             Game.PlayerSys?.LocalController?.PlayGesture(g);
             PublishOwnGesture(pid, g, r.Id);
             var last = w.LastUtterance;
-            WorldAuthority.Submit(new ResidentGestureCommand { residentId = r.Id, gesture = (int)g }, res =>
+            if (LocalQuestGesture(r, pid, g)) return;
+            WorldAuthority.Submit(new ResidentGestureCommand { residentId = r.Id, gesture = (int)g, skipQuest = true }, res =>
             {
                 if (res == null || !res.Success) return;
                 string tag = res.MessageEn ?? "";
@@ -204,6 +211,23 @@ namespace Uchujin.Residents
                 else if (u != null) w.Enqueue(u);
                 if (tag == "follow") w.CloseAfterQueue();
             });
+        }
+
+        /// <summary>
+        /// 依頼への返事としての身振りは、身振りをした本人の端末でクエストに渡す（Game.PerformLocalGesture と同じ扱い）。
+        /// IQuestService.TryHandleGesture はローカルのプレイヤーの身振りしか処理しない（引き受け・断るは中で WorldCommand を送る）ため、
+        /// ホストのコマンド処理で呼ぶとゲストの身振りが依頼に届かない。処理されたら住民側の反応はしない。
+        /// </summary>
+        private bool LocalQuestGesture(Resident r, string playerId, PlayerGesture g)
+        {
+            var quest = Game.Service<IQuestService>();
+            if (quest == null) return false;
+            try { return quest.TryHandleGesture(r.Id, playerId, g); }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                return false;
+            }
         }
 
         private void PublishOwnGesture(string playerId, PlayerGesture g, string residentId)
@@ -374,9 +398,9 @@ namespace Uchujin.Residents
             var r = GetResident(cmd.residentId);
             if (r == null || string.IsNullOrEmpty(cmd.itemId)) return CommandResult.Fail("相手がいません", "Nobody is there");
             if (!ctx.HasItem(cmd.itemId, 1)) return CommandResult.Fail("その物を持っていません", "You don't have that");
-            if (!ctx.TakeItem(cmd.itemId, 1, "gift:" + r.Id)) return CommandResult.Fail("渡せませんでした", "Could not give it");
+            var stack = TakeGiftItem(cmd, ctx, "gift:" + r.Id);
+            if (stack == null) return CommandResult.Fail("渡せませんでした", "Could not give it");
             string pid = ctx.IssuerId;
-            var stack = new ItemStack(cmd.itemId, 1, Mathf.Clamp(cmd.quality, 0, 3));
             r.State.holdUntil = Now + 30;
             r.State.holdForPlayerId = pid;
 
@@ -426,6 +450,46 @@ namespace Uchujin.Residents
             EventBus.Publish(new GiftGivenEvent { PlayerId = pid, ResidentId = r.Id, ItemId = cmd.itemId, Quality = stack.quality, Reaction = reaction });
             MarkDirty();
             return CommandResult.Ok(null, "gift:" + reaction + ":" + (repeated ? "1" : "0"));
+        }
+
+        /// <summary>
+        /// 渡す物を主人公の持ち物から取り出す。ローカルの発行者は、選んだ枠（無ければ同じ品質・同じデータの枠）から正確に取り出す。
+        /// （CommandContext.TakeItem は品質の低い物から取るため、★3 を選んでも ★0 が減り、住民には ★3 が渡る＝品質が増える。
+        /// また大きさ・固有データが失われ、依頼の大きさ判定・預かり物の判定ができなくなる。）
+        /// リモートのゲストは CommandContext の制約上 itemId で取り出し、品質・大きさ・データはゲスト側の申告を使う。
+        /// </summary>
+        private static ItemStack TakeGiftItem(ResidentGiftCommand cmd, CommandContext ctx, string reason)
+        {
+            int quality = Mathf.Clamp(cmd.quality, 0, 3);
+            string data = cmd.data ?? "";
+            if (ctx.IsLocalIssuer)
+            {
+                var inv = ctx.Issuer.Inventory;
+                int slot = -1;
+                var picked = inv.GetSlot(cmd.slot);
+                if (picked != null && !picked.IsEmpty && picked.itemId == cmd.itemId && picked.quality == quality && (picked.data ?? "") == data) slot = cmd.slot;
+                else
+                {
+                    for (int i = 0; i < inv.slots.Count; i++)
+                    {
+                        var s = inv.slots[i];
+                        if (s == null || s.IsEmpty || s.itemId != cmd.itemId || s.quality != quality || (s.data ?? "") != data) continue;
+                        slot = i;
+                        break;
+                    }
+                }
+                if (slot < 0) return null;
+                var taken = inv.TakeFromSlot(slot, 1, reason);
+                if (taken == null || taken.IsEmpty) return null;
+                taken.ownerId = null;
+                return taken;
+            }
+            var like = new ItemStack(cmd.itemId, 1, quality) { data = string.IsNullOrEmpty(cmd.data) ? null : cmd.data };
+            var got = ctx.TakeItemExact(like, 1, reason);
+            if (got == null) return null;
+            got.size = cmd.size;
+            got.ownerId = null;
+            return got;
         }
 
         private CommandResult HandleGestureCommand(ResidentGestureCommand cmd, CommandContext ctx)
@@ -675,7 +739,7 @@ namespace Uchujin.Residents
             {
                 UIManager.PickItem(Player, Loc.T("渡す物を選ぶ", "Choose something to give"),
                     s => s.Definition.Category != ItemCategory.KeyItem,
-                    (idx, stack) => Sys.PlayerGives(this, stack));
+                    (idx, stack) => Sys.PlayerGives(this, idx, stack));
             }
             if (GUILayout.Button(Loc.T("物を見せる", "Show item"), UIStyles.Button, GUILayout.Height(46)))
             {

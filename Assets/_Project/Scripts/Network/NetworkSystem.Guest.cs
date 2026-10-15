@@ -603,6 +603,8 @@ namespace Uchujin.Network
                     return true;
                 case TxKind.TakeItem:
                     return lp.Inventory.Remove(tx.itemId, tx.count, 0, tx.reason) == tx.count;
+                case TxKind.TakeItemExact:
+                    return tx.stack != null && lp.Inventory.RemoveExact(tx.stack, tx.count, tx.reason) != null;
                 case TxKind.Charge:
                     return lp.Wallet.TrySpend(tx.amount, tx.reason);
                 case TxKind.PayMoney:

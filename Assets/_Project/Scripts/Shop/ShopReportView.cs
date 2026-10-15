@@ -354,9 +354,9 @@ namespace Uchujin.Shop
                 if (GUILayout.Button(saved ? Loc.T("音声カード保存済み", "Card saved") : Loc.T("音声カードに保存", "Save voice card"), UIStyles.ButtonSmall))
                 {
                     var label = CardLabel(v, req);
+                    // 保存の通知（保存済みの案内も含む）は SaveVoiceCard 側が出す
                     tablet.SaveVoiceCard(record, label.ja, label.en);
                     savedCards.Add(recordId);
-                    UIManager.Toast(Loc.T("音声カードを保存しました", "Voice card saved"));
                 }
                 GUI.enabled = true;
             }
@@ -380,8 +380,8 @@ namespace Uchujin.Shop
             string residentId = v != null ? v.residentId : req?.residentId;
             if (tablet != null && !string.IsNullOrEmpty(residentId) && GUILayout.Button(Loc.T("住民辞典", "Resident notes"), UIStyles.ButtonSmall))
             {
-                // 特定の住民のページを開く契約がまだ無いため、住民辞典アプリを開く（コアへの追加要望あり）
-                tablet.Open(ShopSystem.ResidentsAppId);
+                // その住民のページを開く（ITabletService.OpenResidentPage）
+                tablet.OpenResidentPage(residentId);
             }
         }
 

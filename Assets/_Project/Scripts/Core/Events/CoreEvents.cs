@@ -53,7 +53,8 @@ namespace Uchujin.Core
     public struct ResidentTalkedEvent { public string PlayerId; public string ResidentId; }
     /// <summary>誰かが宇宙語で発話した（音声・吹き出し・記録の元になる）。</summary>
     public struct UtteranceSpokenEvent { public UtteranceRecord Record; }
-    public struct PlayerGestureEvent { public string PlayerId; public PlayerGesture Gesture; public string TargetResidentId; }
+    public struct PlayerGestureEvent { public string PlayerId; public PlayerGesture Gesture; public string TargetResidentId; /// <summary>クエストが依頼への返事として処理したか（住民側は一般的な反応を控える）。</summary>
+        public bool HandledByQuest; }
 
     // ---- クエスト ----
     public struct QuestStateChangedEvent { public string QuestId; public string ResidentId; public QuestStatus Status; public string PlayerId; }
