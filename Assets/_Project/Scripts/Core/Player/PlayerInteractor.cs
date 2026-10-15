@@ -61,8 +61,9 @@ namespace Uchujin.Core
         private bool IsPointerOverHud()
         {
             // 下部のツールバー付近のクリックは道具使用にしない
+            if (!GameInput.MouseButtonDown(0)) return false;
             var mp = GameInput.MousePosition;
-            return mp.y < 110 * UIStyles.Scale && GameInput.MouseButtonDown(0);
+            return mp.y < 110 * UIStyles.Scale || UIManager.PointerOverOverlay(mp);
         }
 
         public void CycleTool(int dir)

@@ -622,6 +622,28 @@ namespace Uchujin.Residents
         // =====================================================================
 
         /// <summary>hold=true の間はスケジュールAI・移動・自動の発話を止めてその場に留める（RequestGoTo と Speak は効く）。</summary>
+        public int GetResidentAffinity(string residentId, string otherResidentId)
+        {
+            if (residentId == null || otherResidentId == null || !residents.TryGetValue(residentId, out var r)) return 0;
+            return Mathf.Clamp(Mathf.RoundToInt(r.Affinity(otherResidentId)), 0, 100);
+        }
+
+        public IEnumerable<string> GetFriends(string residentId, int max = 5)
+        {
+            var result = new List<string>();
+            if (residentId == null || !residents.TryGetValue(residentId, out var r) || r.State.relations == null) return result;
+            var rels = new List<RelationEntry>(r.State.relations);
+            rels.Sort((a, b) => b.affinity.CompareTo(a.affinity));
+            foreach (var rel in rels)
+            {
+                if (result.Count >= max) break;
+                if (rel.affinity < 30f) break;
+                if (!residents.TryGetValue(rel.otherId, out var o) || !o.State.active) continue;
+                result.Add(rel.otherId);
+            }
+            return result;
+        }
+
         public void HoldForCutscene(string residentId, bool hold)
         {
             var r = GetResident(residentId);

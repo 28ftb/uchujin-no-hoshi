@@ -95,8 +95,8 @@ namespace Uchujin.Core.UI
             if (ShowControlsHelp)
             {
                 GUI.Label(new Rect(20, vh - 46, 1400, 28),
-                    Loc.T("移動:WASD  走る:Shift  調べる/話す:E  道具を使う:左クリック/F  道具切替:R  持ち物:1〜0/I  タブレット:Tab  身振り:G  カメラ:右ドラッグ/ホイール/V  メニュー:Esc  ヘルプ非表示:H",
-                          "Move:WASD Run:Shift Interact:E Use:LMB/F Tool:R Items:1-0/I Tablet:Tab Gesture:G Camera:RMB/Wheel/V Menu:Esc Hide help:H"),
+                    Loc.T("移動:WASD  走る:Shift  調べる/話す:E  道具を使う:左クリック/F  道具切替:R  持ち物:1〜0/I  タブレット:Tab  身振り:G  聞いた言葉を保存:K  カメラ:右ドラッグ/ホイール/V  メニュー:Esc  ヘルプ非表示:H",
+                          "Move:WASD Run:Shift Interact:E Use:LMB/F Tool:R Items:1-0/I Tablet:Tab Gesture:G Save words:K Camera:RMB/Wheel/V Menu:Esc Hide help:H"),
                     UIStyles.LabelDim);
             }
         }

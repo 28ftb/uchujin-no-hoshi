@@ -27,6 +27,12 @@ namespace Uchujin.Core
         UtteranceRecord CreateRecord(Utterance utterance, SpeechChannel channel, string speakerKind, Vector3 position);
         /// <summary>既存記録をもう一度吹き出し表示する（マネピの再生など）。原本は変えない。</summary>
         void Replay(UtteranceRecord record, Transform at);
+        /// <summary>表示の扱いを指定して再生（例：マネピの再現として見せる）。原本は変えない。</summary>
+        void Replay(UtteranceRecord record, Transform at, SpeechChannel shownAs);
+        /// <summary>宇宙人の書き文字（看板・手紙・掲示用）。聞こえる読み方とは別の表記（タブレット仕様 §3）。</summary>
+        string RenderScript(RenderedUtterance rendered);
+        /// <summary>看板などで宇宙文字に読み方を添えるか（設定）。</summary>
+        bool ShowScriptReading { get; }
         /// <summary>最近聞いた発話（会話ログ）。</summary>
         IReadOnlyList<UtteranceRecord> RecentRecords { get; }
         UtteranceRecord GetRecord(string recordId);
@@ -48,7 +54,10 @@ namespace Uchujin.Core
         Color IconColor { get; }
         bool IsAvailable { get; }
         void OnOpen();
-        /// <summary>IMGUI で描画（GUILayout 可）。area はタブレット画面内の領域。</summary>
+        /// <summary>
+        /// IMGUI で描画（GUILayout 可）。タブレット側が GUILayout.BeginArea を済ませた中で、(0,0) 起点のローカル矩形を渡す。
+        /// アプリ側でさらに GUILayout.BeginArea(area) してもよい（ローカル矩形なので位置はずれない）。
+        /// </summary>
         void Draw(Rect area);
     }
 
@@ -86,7 +95,15 @@ namespace Uchujin.Core
 
     public interface ITabletService
     {
+        /// <summary>アプリを登録（同じ AppId は置き換え）。</summary>
         void RegisterApp(ITabletApp app);
+        void UnregisterApp(string appId);
+        /// <summary>住民辞典の、その住民のページを開く。</summary>
+        void OpenResidentPage(string residentId);
+        /// <summary>辞書に書いた単語（表面形）の一覧。</summary>
+        IReadOnlyList<string> GetDictionarySurfaces();
+        /// <summary>プレイヤーが選んだ推測訳の一覧（表面形 → 訳）。エンディングで辞書を映す等に使う。</summary>
+        IReadOnlyList<KeyValuePair<string, string>> GetPlayerGlossEntries();
         void Open(string appId = null);
         void Close();
         bool IsOpen { get; }
@@ -274,6 +291,14 @@ namespace Uchujin.Core
         void RegisterInteractionProvider(IResidentInteractionProvider provider);
         /// <summary>住民を一時的に特定の場所へ向かわせる（イベント・見送り・クエスト用）。</summary>
         void RequestGoTo(string residentId, Vector3 position, int untilMinuteOfDay, string reasonTag);
+        /// <summary>演出中は生活AI・移動・自動の発話を止めてその場に留める（RequestGoTo と Speak は効く）。</summary>
+        void HoldForCutscene(string residentId, bool hold);
+        /// <summary>住民を即座に移動する（AIの内部位置も同期）。</summary>
+        void Warp(string residentId, Vector3 position, float yawDegrees);
+        /// <summary>住民同士の親しさ 0〜100。</summary>
+        int GetResidentAffinity(string residentId, string otherResidentId);
+        /// <summary>親しい住民（親しさの高い順）。</summary>
+        IEnumerable<string> GetFriends(string residentId, int max = 5);
     }
 
     // ---------------- 商店（Shop モジュール） ----------------
@@ -475,6 +500,23 @@ namespace Uchujin.Core
         int PlantedPlotCount { get; }
     }
 
+    /// <summary>料理を食べた時の短時間の能力補助（料理仕様 §7.2【提案】。Cooking が実装。スタミナ回復ではない）。</summary>
+    public interface IFoodEffectService
+    {
+        /// <summary>effectId："fishing_bite" "keen_eye" "calm" "swift" "glow" "warm" など。</summary>
+        bool HasFoodEffect(string playerId, string effectId);
+        string GetActiveFoodEffect(string playerId);
+    }
+
+    /// <summary>Gesture.PointAt の target に使う、場所を表す特別な値。</summary>
+    public static class PointTargets
+    {
+        public const string Rocket = "rocket";
+        public const string Hill = "hill";
+        public const string River = "river";
+        public const string Cart = "cart";
+    }
+
     // ---------------- 家・家具（Housing モジュール） ----------------
 
     public class PlacedFurnitureView
@@ -517,7 +559,11 @@ namespace Uchujin.Core
     {
         /// <summary>住民に話しかけた時、そのプレイヤーへのお願いがあれば発話を返す（無ければ null）。</summary>
         Utterance GetRequestTalk(string residentId, string playerId);
-        /// <summary>住民へ物を渡した時、依頼の達成として処理したら true（報酬・反応もクエスト側で行う）。</summary>
+        /// <summary>
+        /// 住民へ物を渡した時、依頼の達成として処理したら true（報酬・反応もクエスト側で行う）。
+        /// stack は呼び出し側が既に主人公の持ち物から取り除いた物。true ならその物の行き先はクエスト側が決める
+        /// （受け取らない物はクエスト側が主人公に返す）。false なら通常の贈り物として扱う。
+        /// </summary>
         bool TryHandleItemGiven(string residentId, string playerId, ItemStack stack);
         /// <summary>身振り（うなずく＝引き受ける、首を振る＝断る など）を依頼への返事として処理したら true。</summary>
         bool TryHandleGesture(string residentId, string playerId, PlayerGesture gesture);

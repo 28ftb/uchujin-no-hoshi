@@ -340,6 +340,39 @@ namespace Uchujin.Tablet
 
         public bool IsOpen => window != null && window.IsOpen;
 
+        public void UnregisterApp(string appId)
+        {
+            if (string.IsNullOrEmpty(appId)) return;
+            externalApps.RemoveAll(a => a == null || a.AppId == appId);
+        }
+
+        public void OpenResidentPage(string residentId)
+        {
+            Open(ResidentsApp.Id);
+            if (!string.IsNullOrEmpty(residentId)) ResidentsApp?.ShowPage(residentId);
+        }
+
+        public IReadOnlyList<string> GetDictionarySurfaces()
+        {
+            var list = new List<string>();
+            if (Know?.dictionary == null) return list;
+            foreach (var e in Know.dictionary) if (e != null && !string.IsNullOrEmpty(e.surface)) list.Add(e.surface);
+            return list;
+        }
+
+        public IReadOnlyList<KeyValuePair<string, string>> GetPlayerGlossEntries()
+        {
+            var list = new List<KeyValuePair<string, string>>();
+            if (Know?.dictionary == null) return list;
+            foreach (var e in Know.dictionary)
+            {
+                if (e == null || string.IsNullOrEmpty(e.surface)) continue;
+                var g = GlossOf(e);
+                if (!string.IsNullOrEmpty(g)) list.Add(new KeyValuePair<string, string>(e.surface, g));
+            }
+            return list;
+        }
+
         /// <summary>TabletWindow.OnClose から呼ばれる。</summary>
         internal void NotifyClosed()
         {

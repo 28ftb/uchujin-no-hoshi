@@ -67,6 +67,15 @@ namespace Uchujin.Core
         /// <summary>ワールドシステムが PreparePlanet で設定する。以降のシステムが参照する。</summary>
         public World.WorldLayout Layout { get; set; }
 
+        /// <summary>新規開始時の設定（ロード・ゲスト参加では null）。</summary>
+        public NewGameSettings Settings { get; set; }
+
+        /// <summary>
+        /// 持ち物・お金・道具・技能を初期化した新規ゲームか（「次の星へ進む」で引き継いだ場合は false、ロード時も false）。
+        /// PlayerProfile スコープのデータ（技能・同行生物など）を初期化するかの判断に使う。
+        /// </summary>
+        public bool IsFreshProfile => IsNewPlanet && (Settings == null || !Settings.KeepProfile);
+
         /// <summary>システム間で生成時に受け渡す任意データ。</summary>
         public readonly Dictionary<string, object> Shared = new Dictionary<string, object>();
 

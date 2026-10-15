@@ -45,7 +45,7 @@ namespace Uchujin.Language
     /// ・ITabletService.ShowGlossOverlay が true なら、各語の下にプレイヤー自身の推測訳を小さく併記（無い語は空欄。正解は補完しない）。
     /// ・住民同士の会話（Overheard）は小さめ。看板・手紙は宇宙文字（設定で読み方を併記）。
     /// </summary>
-    public sealed class SpeechBubbleOverlay : IUIOverlay
+    public sealed class SpeechBubbleOverlay : IUIOverlay, IPointerBlockingOverlay
     {
         // ---- 【仮数値】見た目 ----
         public const float MaxWidthDirect = 560f;
@@ -108,6 +108,8 @@ namespace Uchujin.Language
         }
 
         /// <summary>画面座標（Input.mousePosition 形式：左下原点）が吹き出しの上か。</summary>
+        bool IPointerBlockingOverlay.IsPointerOver(Vector2 screenPosition) => IsPointerOver(screenPosition);
+
         public static bool IsPointerOver(Vector2 screenPosition)
         {
             float s = UIStyles.Scale;

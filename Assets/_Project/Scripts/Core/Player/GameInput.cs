@@ -163,6 +163,10 @@ namespace Uchujin.Core
         public static bool QuickSave => KeyDown(KeyCode.F5);
         public static bool ToggleHelp => KeyDown(KeyCode.H);
         public static bool Map => KeyDown(KeyCode.M);
+        /// <summary>直前に聞いた言葉を音声カードに保存（タブレット）。</summary>
+        public static bool QuickRecord => KeyDown(KeyCode.K);
+        /// <summary>写真のシャッター（タブレットのカメラ）。</summary>
+        public static bool Shutter => KeyDown(KeyCode.Return) || KeyDown(KeyCode.KeypadEnter);
 
         /// <summary>数字キーで選んだホットバー番号（0〜9）。無ければ -1。</summary>
         public static int HotbarKey

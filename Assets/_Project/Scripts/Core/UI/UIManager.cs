@@ -105,6 +105,32 @@ namespace Uchujin.Core.UI
 
         public static void UnregisterOverlay(IUIOverlay overlay) => overlays.Remove(overlay);
 
+        /// <summary>マウスがクリックを受け付ける重ね描き（吹き出しの単語など）の上にあるか。</summary>
+        public static bool PointerOverOverlay(Vector2 screenPosition)
+        {
+            foreach (var o in overlays)
+            {
+                if (o is IPointerBlockingOverlay pb)
+                {
+                    try { if (pb.IsPointerOver(screenPosition)) return true; }
+                    catch (Exception e) { Debug.LogException(e); }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Esc メニューの設定画面に各モジュールが項目を足す（GUILayout で描く）。</summary>
+        public static readonly List<Action> ExtraSettingsDrawers = new List<Action>();
+
+        /// <summary>開いているウィンドウの「ソロで時間を止める」設定を再評価する。</summary>
+        public static void RefreshPause(UIWindow w)
+        {
+            if (w == null || Game.Instance?.Time == null) return;
+            string token = "ui:" + w.GetHashCode();
+            if (w.IsOpen && w.PausesTimeInSolo) Game.Instance.Time.AddPersonalPause(token);
+            else Game.Instance.Time.RemovePersonalPause(token);
+        }
+
         public static void Toast(string text, float seconds = 3.5f)
         {
             if (string.IsNullOrEmpty(text)) return;

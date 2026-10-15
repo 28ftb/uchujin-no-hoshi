@@ -119,6 +119,8 @@ namespace Uchujin.Core
         public const string DECORATE = "DECORATE";
         public const string FIGHT = "FIGHT";     // 喧嘩する
         public const string MAKE_UP = "MAKE_UP"; // 仲直りする
+        public const string COMPETE = "COMPETE"; // 競う
+        public const string DRAW = "DRAW";       // 絵を描く
 
         // ---- 形容詞（評価・状態） ----
         public const string BIG = "BIG";
@@ -343,7 +345,7 @@ namespace Uchujin.Core
                 SLEEP, PLAY, MEET, TALK, KNOW, THINK, FIND, LOSE, LIVE, MOVE_HOUSE, LEAVE, RETURN, WAIT, LOVE, RAIN_VERB,
                 BLOW, SHINE, FLY, WALK, RUN, SING, CARRY, BRING, USE, PUT, OPEN, CLOSE, START, FINISH, TEACH, LEARN, CRY,
                 LAUGH, CELEBRATE, VISIT, CHANGE, REMEMBER, FORGET, DREAM, LOOK_FOR, FLOAT, FALL, WRITE, READ, DECORATE,
-                FIGHT, MAKE_UP);
+                FIGHT, MAKE_UP, COMPETE, DRAW);
             Reg(ConceptKind.Adjective, BIG, SMALL, PRICE_EXPENSIVE, PRICE_CHEAP, TALL, DELICIOUS, BAD_TASTE, GOOD, BAD, HAPPY,
                 SAD, SCARY, BEAUTIFUL, CUTE, HARD, SOFT, RARE, BROKEN, NEW, OLD, HOT, COLD, FAST, SLOW, STRONG, WEAK, HEAVY,
                 BRIGHT, DARK, QUIET, LOUD, TIRED, HUNGRY, FULL, BUSY, FREE_TIME, WET, DRY, NEAR, FAR, DIFFICULT, EASY, FUN,

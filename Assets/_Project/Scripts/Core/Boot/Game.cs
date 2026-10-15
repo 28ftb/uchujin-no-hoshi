@@ -210,7 +210,7 @@ namespace Uchujin.Core
             Planet.playerGivenName = settings.PlanetNickname;
             CurrentSlotId = Planet.worldId.Substring(0, 12);
             Flags = new FlagStore();
-            PlanetContext = new PlanetContext(Planet, true);
+            PlanetContext = new PlanetContext(Planet, true) { Settings = settings };
             CreateSceneRoot();
 
             foreach (var s in systems)
@@ -267,7 +267,7 @@ namespace Uchujin.Core
             }
 
             TeardownPlanet();
-            WorldAuthority.Role = NetRole.Offline;
+            WorldAuthority.ResetSession();
             Planet = planetFile.planet;
             CurrentSlotId = slotId;
             Flags = planetFile.flags ?? new FlagStore();
@@ -484,6 +484,7 @@ namespace Uchujin.Core
                     if (showToast) UIManager.Toast(Loc.T("この星での記録を保存しました", "Saved your notes for this planet"));
                     return true;
                 }
+                if (string.IsNullOrEmpty(CurrentSlotId)) return false;
                 var planetFile = new PlanetSaveFile { planet = Planet, flags = Flags, entries = CaptureAllPlanetEntries() };
                 var playerFile = new PlayerSaveFile
                 {

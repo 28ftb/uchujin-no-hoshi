@@ -39,6 +39,13 @@ namespace Uchujin.Core.UI
         }
     }
 
+    /// <summary>クリックを受け付ける重ね描き（吹き出しの単語など）。その上でのクリックでは道具を使わない。</summary>
+    public interface IPointerBlockingOverlay
+    {
+        /// <summary>screenPosition はスクリーン座標（左下原点、GameInput.MousePosition と同じ）。</summary>
+        bool IsPointerOver(Vector2 screenPosition);
+    }
+
     /// <summary>毎フレーム HUD 層に描画するもの（吹き出し、釣りゲージ、ミニゲーム等）。</summary>
     public interface IUIOverlay
     {

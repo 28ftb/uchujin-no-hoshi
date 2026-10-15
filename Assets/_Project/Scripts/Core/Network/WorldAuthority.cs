@@ -28,6 +28,8 @@ namespace Uchujin.Core
         public bool Success;
         public string MessageJa;
         public string MessageEn;
+        /// <summary>結果の追加データ（採掘で得た物など。モジュールが自由に使う）。</summary>
+        public string Data;
 
         public string Message => Loc.T(MessageJa, MessageEn);
 

@@ -146,6 +146,8 @@ namespace Uchujin.Core
     public class FlagStore
     {
         public List<StringIntPair> values = new List<StringIntPair>();
+        /// <summary>変更のたびに増える（同期の変更検出用。保存しない）。</summary>
+        [NonSerialized] public int Version;
 
         public int Get(string key, int fallback = 0)
         {
@@ -161,11 +163,13 @@ namespace Uchujin.Core
             {
                 if (p.key == key)
                 {
+                    if (p.value != value) Version++;
                     p.value = value;
                     return;
                 }
             }
             values.Add(new StringIntPair(key, value));
+            Version++;
         }
 
         public int Increment(string key, int by = 1)
@@ -175,7 +179,11 @@ namespace Uchujin.Core
             return v;
         }
 
-        public void Clear() => values.Clear();
+        public void Clear()
+        {
+            values.Clear();
+            Version++;
+        }
     }
 
     /// <summary>エンディング後の選択（基本決定 v0.2 §5）。</summary>

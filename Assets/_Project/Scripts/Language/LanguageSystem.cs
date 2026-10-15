@@ -245,7 +245,6 @@ namespace Uchujin.Language
 
         /// <summary>
         /// 宇宙人の書き文字（看板・手紙・掲示用）。読み方（発音表記）とは別の表記（タブレット仕様 §3）。
-        /// ※ ISpeechService には未定義のため、他モジュールは Speak/Replay の Sign・Letter チャンネル経由で表示される（README 参照）。
         /// </summary>
         public string RenderScript(RenderedUtterance rendered)
         {
@@ -311,7 +310,16 @@ namespace Uchujin.Language
             return rec;
         }
 
+        public bool ShowScriptReading => LanguageSettings.ShowSignReading;
+
         public void Replay(UtteranceRecord record, Transform at)
+        {
+            if (record == null) return;
+            var shown = record.channel == SpeechChannel.Sign || record.channel == SpeechChannel.Letter ? record.channel : SpeechChannel.ManepiPlayback;
+            Replay(record, at, shown);
+        }
+
+        public void Replay(UtteranceRecord record, Transform at, SpeechChannel shownAs)
         {
             if (record == null) return;
             var b = new SpeechBubble
@@ -320,7 +328,7 @@ namespace Uchujin.Language
                 Anchor = at,
                 Position = at != null ? at.position : Vector3.zero,
                 Subtitle = at == null,
-                Channel = record.channel == SpeechChannel.Sign || record.channel == SpeechChannel.Letter ? record.channel : SpeechChannel.ManepiPlayback,
+                Channel = shownAs,
                 Radius = RadiusOf(SpeechChannel.ManepiPlayback),
                 Born = Time.unscaledTime,
                 Until = Time.unscaledTime + DurationOf(record),

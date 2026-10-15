@@ -32,6 +32,12 @@ namespace Uchujin.Core.UI
                 Close();
                 Game.Instance.StartNewPlanet(new NewGameSettings { SeedText = seed });
             }
+            var net = Game.Instance.Service<INetworkService>();
+            if (net != null && GUILayout.Button(Loc.T("友達の星へ行く", "Visit a friend's planet"), UIStyles.Button, GUILayout.Height(48)))
+            {
+                Close();
+                net.OpenMultiplayerMenu();
+            }
             GUILayout.Space(16);
             GUILayout.Label(Loc.T("続きから", "Continue"), UIStyles.LabelBold);
             scroll = GUILayout.BeginScrollView(scroll, GUILayout.Height(380));
@@ -118,6 +124,11 @@ namespace Uchujin.Core.UI
             GUILayout.Space(10);
             GUILayout.Label(Loc.T("音量", "Volume"), UIStyles.Label);
             AudioListener.volume = GUILayout.HorizontalSlider(AudioListener.volume, 0f, 1f);
+            foreach (var draw in UIManager.ExtraSettingsDrawers)
+            {
+                try { draw?.Invoke(); }
+                catch (System.Exception e) { if (e is ExitGUIException) throw; Debug.LogException(e); }
+            }
             GUILayout.FlexibleSpace();
             if (GUILayout.Button(Loc.T("戻る", "Back"), UIStyles.Button, GUILayout.Height(48))) showSettings = false;
         }

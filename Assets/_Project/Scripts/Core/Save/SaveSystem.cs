@@ -102,6 +102,21 @@ namespace Uchujin.Core
             WriteAtomic(Path.Combine(dir, "meta.json"), JsonUtility.ToJson(meta, true));
         }
 
+        public SlotMeta ReadMeta(string slotId)
+        {
+            var path = Path.Combine(SlotDir(slotId), "meta.json");
+            if (!File.Exists(path)) return null;
+            return JsonUtility.FromJson<SlotMeta>(File.ReadAllText(path));
+        }
+
+        public void WriteMeta(SlotMeta meta)
+        {
+            if (meta == null || string.IsNullOrEmpty(meta.slotId)) return;
+            var dir = SlotDir(meta.slotId);
+            Directory.CreateDirectory(dir);
+            WriteAtomic(Path.Combine(dir, "meta.json"), JsonUtility.ToJson(meta, true));
+        }
+
         public bool SlotExists(string slotId) => File.Exists(Path.Combine(SlotDir(slotId), "planet.json"));
 
         public PlanetSaveFile ReadPlanet(string slotId)

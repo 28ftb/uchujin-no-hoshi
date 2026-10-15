@@ -18,7 +18,7 @@ namespace Uchujin.Cooking
     /// ・時間経過の加工（§8.1）と天候（§8.2）。住民の料理人の実演（§11・§12）。料理・加工記録アプリ（§12.2）
     /// ・ロケット用の加工レシピ（ロケット仕様 §9）と職人への依頼（§9.3）
     /// </summary>
-    public sealed class CookingSystem : GameSystemBase, ICraftingService
+    public sealed class CookingSystem : GameSystemBase, ICraftingService, IFoodEffectService
     {
         public override string SaveKey => "cooking";
         public override int DailyUpdateOrder => 350;
