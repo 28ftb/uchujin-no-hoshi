@@ -98,8 +98,8 @@ namespace Uchujin.Story
             }
             GUI.Label(new Rect(pr.x + 10, pr.yMax - 30, pr.width - 20, 26), Loc.T("ドラッグで回転", "Drag to rotate"), UIStyles.LabelDim);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("⟲", UIStyles.Button, GUILayout.Height(42)) && preview != null) { preview.Yaw += 45f; preview.AutoRotate = false; }
-            if (GUILayout.Button("⟳", UIStyles.Button, GUILayout.Height(42)) && preview != null) { preview.Yaw -= 45f; preview.AutoRotate = false; }
+            if (GUILayout.Button("◀", UIStyles.Button, GUILayout.Height(42)) && preview != null) { preview.Yaw += 45f; preview.AutoRotate = false; }
+            if (GUILayout.Button("▶", UIStyles.Button, GUILayout.Height(42)) && preview != null) { preview.Yaw -= 45f; preview.AutoRotate = false; }
             if (preview != null)
             {
                 if (GUILayout.Button(preview.CloseUp ? Loc.T("全身", "Full body") : Loc.T("顔を見る", "Face"), UIStyles.Button, GUILayout.Height(42))) preview.CloseUp = !preview.CloseUp;
