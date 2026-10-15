@@ -203,6 +203,17 @@ Unity で開いた後、まずコンパイルエラーの解消 → 起動 → �
 - 気づいたが直していないもの（判断待ち）：操作説明の1行と持ち物スロットの重なり、昼の明るすぎ、**ロードすると位置が戻らず不時着地点から始まる**（プレイヤー位置をセーブしていない。仕様の判断が必要）。
 - 詳細は `Docs/PLAYTEST_CHECKLIST.md` の「自動確認の結果」。
 
+## 8. 描画を URP に移行（2026-10-16）
+- `com.unity.render-pipelines.universal` 17.6.0 を追加。`Editor/UrpProjectSetup.cs`（メニュー「宇宙人の星 → URP を設定する」）で
+  `Assets/_Project/Settings/URP_Asset.asset`・`URP_Renderer.asset`（SSAO 付き、HDR、MSAA 4x、影の距離 70m、2カスケード）を作り、Graphics と全品質レベルに割り当てた。
+  URP が自動生成した `Assets/UniversalRenderPipelineGlobalSettings.asset`・`Assets/DefaultVolumeProfile.asset` もコミット。
+- 色空間を **Linear** に変更。Scripting Define Symbols（Standalone）に **`UCHUJIN_URP`** を追加。
+- `Core/Visual/UrpPostProcess.cs`（`#if UCHUJIN_URP`）：シーンを用意しない構成のため、全体の後処理（トーンマップ Neutral・ブルーム・色調整・周辺減光）をコードで作り、実行時に作られるカメラにも後処理を有効にする。数値は `PostFxTuning`【仮】。
+- `Core/Visual/UrpLightCompat.cs`（`#if UCHUJIN_URP`）：各モジュールの点光源は Built-in の距離減衰で明るさを決めているため、URP（逆二乗）では暗くなる。範囲の約35%の距離で同じ明るさになる倍率（0.03×range²）を毎フレーム自動で掛ける。他のコードが明るさを設定し直したらその値を基準に補正し直す。
+- 型チェック（`check.sh`）は `UCHUJIN_URP` を定義しないので、URP の型に依存するコードは対象外。
+- 確認：画面ありの自動確認で全段階エラー0。キャラメイクのプレビュー・家の中・鉱山も点光源で照らされる。比較画像 `Logs/compare_builtin_vs_urp.png`（コミット対象外）。
+- 残る調整：光源の真下だけ白飛びしやすい（鉱山の到着地点のランタン）、昼の広場はまだやや明るい、家の中の周りが緑の平面に見える。
+
 ### まだ確認できていないこと
 - キー・マウス・IME による実際の操作感、音。→ `Docs/PLAYTEST_CHECKLIST.md` の手順で Editor 再生して確認する。
 - ビルド（Always Included Shaders の設定を含む）、マルチ（LAN UDP の2起動・EOS）。

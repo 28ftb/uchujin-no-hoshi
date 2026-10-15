@@ -16,7 +16,7 @@
    初回は `ProjectSettings` の残りと `Library/` が自動生成されます（数分かかります）。
 3. メニュー **「宇宙人の星 → メインシーンを作成して開く」** を実行（空のシーン `Assets/_Project/Scenes/Main.unity` ができます）。
    シーンは空で構いません。**再生すると `GameBootstrap` がゲームを自動生成し、タイトル画面から始まります。**
-4. 描画パイプラインは Built-in を想定（URP でも `MaterialCache` が `Universal Render Pipeline/Lit` を探して動く作り）。
+4. 描画パイプラインは **URP**（`Assets/_Project/Settings/URP_Asset.asset`、色空間 Linear、定義 `UCHUJIN_URP`）。後処理と点光源の補正はコードで設定（`Core/Visual/Urp*.cs`）。
 5. 入力：旧 Input Manager／新 Input System のどちらでも動くようにしてあります（Player Settings → Active Input Handling が「Both」なら確実）。
 
 ### マルチプレイ（EOS P2P）
