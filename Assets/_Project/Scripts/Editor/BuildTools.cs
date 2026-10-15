@@ -20,8 +20,11 @@ namespace Uchujin.EditorTools
         public const string ExeName = "UchujinNoHoshi.exe";
 
         // マテリアルはコードで作る（MaterialCache ほか）ので、Shader.Find で探すシェーダーがビルドで消えないようにする。
-        private static readonly string[] RequiredShaders = { "Standard" };
+        // URP のシェーダーは Always Included にすると全バリアントが入ってビルドが極端に遅くなるため、
+        // 使う組み合わせ（不透明・半透明・発光）のマテリアルを Resources に置いて含める（IncludeUrpShaderRefs）。
+        private static readonly string[] RequiredShaders = { };
         private static readonly string[] OptionalShaders = { "Unlit/Color", "Unlit/Transparent", "Sprites/Default", "Particles/Standard Unlit", "Legacy Shaders/Particles/Alpha Blended" };
+        private const string UrpRefDir = "Assets/_Project/Resources/ShaderRefs";
 
         [MenuItem("宇宙人の星/Windows ビルド（ランチャーへ公開）", priority = 60)]
         public static void BuildWindows()
@@ -75,7 +78,43 @@ namespace Uchujin.EditorTools
             foreach (var name in RequiredShaders) Add(name, true);
             foreach (var name in OptionalShaders) Add(name, false);
             graphics.ApplyModifiedPropertiesWithoutUndo();
+            IncludeUrpShaderRefs();
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// URP の Lit / Particles Unlit を、MaterialCache などが実行時に作るのと同じキーワードの組み合わせでマテリアル化して Resources に置く。
+        /// （Resources 内のマテリアルが参照するシェーダーとそのバリアントはビルドに含まれる）
+        /// </summary>
+        public static void IncludeUrpShaderRefs()
+        {
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) return; // URP でなければ不要
+            Directory.CreateDirectory(UrpRefDir);
+            void Make(string name, Shader shader, Action<Material> setup)
+            {
+                if (shader == null) return;
+                var path = UrpRefDir + "/" + name + ".mat";
+                if (AssetDatabase.LoadAssetAtPath<Material>(path) != null) return;
+                var m = new Material(shader) { name = name };
+                setup?.Invoke(m);
+                AssetDatabase.CreateAsset(m, path);
+            }
+            Make("UrpLit_Opaque", lit, null);
+            Make("UrpLit_Emissive", lit, m => m.EnableKeyword("_EMISSION"));
+            // MaterialCache.MakeTransparent（URP）と同じ設定
+            Make("UrpLit_Transparent", lit, m =>
+            {
+                m.SetFloat("_Surface", 1f);
+                m.SetFloat("_Blend", 0f);
+                m.SetOverrideTag("RenderType", "Transparent");
+                m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                m.SetInt("_ZWrite", 0);
+                m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                m.renderQueue = 3000;
+            });
+            Make("UrpParticlesUnlit", Shader.Find("Universal Render Pipeline/Particles/Unlit"), null);
         }
     }
 }
