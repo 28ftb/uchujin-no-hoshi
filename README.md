@@ -10,14 +10,15 @@
 
 ## ローカルで開く
 
-1. Unity Hub で **Unity 6（6000.0 LTS 以降）** をインストール（2022.3 LTS でも動く想定ですが未確認）。
-   `ProjectSettings/ProjectVersion.txt` は `6000.6.4f1`（コンパイルでエラー0を確認した版）です。手元の別バージョンで開いても構いません。
+1. Unity Hub で **Unity 6000.6.4f1** をインストール（`ProjectSettings/ProjectVersion.txt` と同じ版）。
+   **別の版では開かないでください。** プロジェクトが別の版へ変換され、URP 17.6 の設定も壊れます。
 2. このリポジトリを clone し、Unity Hub の「追加 → ディスクから追加」でフォルダを選んで開く。
-   初回は `ProjectSettings` の残りと `Library/` が自動生成されます（数分かかります）。
-3. メニュー **「宇宙人の星 → メインシーンを作成して開く」** を実行（空のシーン `Assets/_Project/Scenes/Main.unity` ができます）。
+   初回は `Library/` が自動生成されます（数分かかります）。
+3. `Assets/_Project/Scenes/Main.unity`（作成・Build Settings 登録済み）を開いて再生する。
    シーンは空で構いません。**再生すると `GameBootstrap` がゲームを自動生成し、タイトル画面から始まります。**
+   （シーンを作り直す時はメニュー「宇宙人の星 → メインシーンを作成して開く」）
 4. 描画パイプラインは **URP**（`Assets/_Project/Settings/URP_Asset.asset`、色空間 Linear、定義 `UCHUJIN_URP`）。後処理と点光源の補正はコードで設定（`Core/Visual/Urp*.cs`）。
-5. 入力：旧 Input Manager／新 Input System のどちらでも動くようにしてあります（Player Settings → Active Input Handling が「Both」なら確実）。
+5. 入力：Active Input Handling は「Both」に設定済み（Input System パッケージは未導入なので、旧 Input Manager の経路で動きます）。
 
 ### マルチプレイ（EOS P2P）
 - 既定では EOS を使わず、**LAN（UDP）** で同じPCの2起動テストができます（2つ目は起動引数 `-uchujinTestSlot 2`）。
@@ -58,6 +59,7 @@
 - `Tools/CompileCheck/check.sh` — Unity 不要の型チェック（`dotnet` が必要）
 
 ## 開発を続けるときの注意
+- AI エージェント（Codex・Claude Code）の作業ルール・環境・確認コマンドは **[`AGENTS.md`](AGENTS.md)**。確認は `Tools/Unity-Check.ps1`（TypeCheck / Compile / Smoke / Visual）。
 - モジュールは Core にだけ依存し、他モジュールとは `Game.Instance.Service<IXxx>()` と `EventBus` で連携します。
 - シードから作るものは `SeededRandom` / `StableHash` を使う（`UnityEngine.Random` 禁止）。
 - 星の状態を変える操作は `WorldCommand` + `WorldAuthority.Submit`（ホスト権威）。

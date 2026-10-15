@@ -86,7 +86,7 @@ Unity 6000.6.4f1 で `Assets/_Project/Scenes/Main.unity` を開いて再生し�
 
 ## 8. セーブ
 - [ ] Esc → メニュー →「セーブする」で「セーブしました」の表示。F5 のクイックセーブも同様。
-- [ ] メニュー「宇宙人の星 → セーブフォルダを開く」でファイルができている（`%USERPROFILE%\AppData\LocalLow\DefaultCompany\uchujin-no-hoshi\Saves`）。
+- [ ] メニュー「宇宙人の星 → セーブフォルダを開く」でファイルができている（`%USERPROFILE%\AppData\LocalLow\UchujinNoHoshi\宇宙人の星\Saves`。会社名・製品名を変えたので、それ以前のセーブは `LocalLow\DefaultCompany\uchujin-no-hoshi` に残っている）。
 - [ ] 「セーブしてタイトルへ」でタイトルに戻る。
 
 ## 9. ロード

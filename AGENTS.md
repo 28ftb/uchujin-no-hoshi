@@ -18,6 +18,10 @@ Codex・Claude Code など、このリポジトリで作業するエージェン
 | Git Bash | `C:\Program Files\Git\bin\bash.exe` | `check.sh` の実行に使う。 |
 | Blender | 5.2：`C:\Program Files\Blender Foundation\Blender 5.2\blender.exe` | 宇宙生物モデルの制作用（`ArtSource/`）。 |
 
+環境を診断する時の注意：
+- `Documents\Codex\UnityDevelopment\Tools\Test-UnityDevelopment.ps1` の `unityEditorVersion` / `unityEditorPath` は、**診断スクリプト自身の既定の Unity（6000.3.24f1）**を報告するもので、このプロジェクトが使う版ではない。プロジェクトの版は `ProjectSettings/ProjectVersion.txt`（同スクリプトの `project.unityVersion`）で判断し、実際に使えるかは `Tools/Unity-Check.ps1 -Mode Compile` で確かめる。
+- Unity CLI（`Tools\unity.exe`）の **サインイン状態（`auth status`）とライセンス状態（`license status`）は別々に判断する**。バッチモードの実行に必要なのは有効なライセンスで、ログに「アクセストークンが無い」と出ていてもライセンスが有効ならコンパイル・スモークテストは動く。報告ではこの2つを分けて書く。
+
 ## 3. 確認コマンド（PowerShell。リポジトリのルートで実行）
 ```powershell
 pwsh -NoProfile -File Tools/Unity-Check.ps1 -Mode TypeCheck   # Unity 不要の型チェック（数秒）
@@ -29,6 +33,7 @@ pwsh -NoProfile -File Tools/Unity-Check.ps1 -Mode Visual      # 画面ありで�
 - 型チェック（`check.sh`）は NuGet の Unity 2021.3 参照に対するもので、Editor フォルダと `#if UCHUJIN_URP` / `#if UCHUJIN_EOS` の中は対象外。Unity でのコンパイルの代わりにはならない。
 - **Unity Editor でこのプロジェクトを開いている間はバッチモードが使えない**（同時に1つしか開けない。スクリプトがロックを検出して止まる）。
 - `-nographics` は使わない（URP では RenderTexture が作れずキャラメイクのプレビューでエラーになる）。`Unity-Check.ps1` は使っていない。
+- 既知の事象：Unity の起動直後に **`UnityEditor.Search`（`SearchDatabase` … `ArgumentOutOfRangeException`）の例外**がログに出ることがある。Unity Editor 自身の検索インデックス処理のもので、ゲームのコードとは無関係。スモークテストの集計からは除外している（`BatchSmokeTest.OnLog`）。
 - Editor で初めて再生した直後は、シェーダーを裏でコンパイル中の水色一色の仮表示が写ることがある。2回目以降の撮影で判断する。
 
 ## 4. ビルドとランチャーへの公開
