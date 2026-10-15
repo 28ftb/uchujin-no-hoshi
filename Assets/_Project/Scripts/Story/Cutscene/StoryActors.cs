@@ -20,12 +20,16 @@ namespace Uchujin.Story
             return layout != null ? layout.OnGround(p) : p;
         }
 
-        /// <summary>RequestGoTo の期限（その日の分）。日付をまたがないよう 23:59 で止める。</summary>
+        /// <summary>
+        /// RequestGoTo の期限（その日の分）。日をまたぐ場合は翌日の時刻として渡す（RequestGoTo は「今以前の時刻」を翌日扱いにする）。
+        /// 23:59 で丸めると、23:59 ちょうどに呼んだ時に丸1日その場に留まってしまうため丸めない。
+        /// </summary>
         public static int UntilMinute(int addMinutes)
         {
             var clock = Game.Instance != null ? Game.Instance.Time : null;
             int now = clock != null ? clock.MinuteOfDay : 8 * 60;
-            return Mathf.Clamp(now + addMinutes, 0, TimeSystem.MinutesPerDay - 1);
+            int add = Mathf.Clamp(addMinutes, 1, TimeSystem.MinutesPerDay - 1);
+            return (now + add) % TimeSystem.MinutesPerDay;
         }
 
         public static IResidentInfo Get(string id)
@@ -48,9 +52,22 @@ namespace Uchujin.Story
         public static void Warp(string residentId, Vector3 position)
         {
             var r = Get(residentId);
-            if (r == null || r.Transform == null) return;
-            var t = r.Transform;
+            if (r == null) return;
             var pos = Ground(position);
+            // 住民モジュールの Warp（AIの内部位置・経路・ゲストの補間先まで同期する契約）を優先する
+            var dir = Directory;
+            if (dir != null)
+            {
+                try
+                {
+                    float yaw = r.Transform != null ? r.Transform.eulerAngles.y : 0f;
+                    dir.Warp(residentId, pos, yaw);
+                    return;
+                }
+                catch (System.Exception e) { Debug.LogException(e); }
+            }
+            if (r.Transform == null) return;
+            var t = r.Transform;
             var cc = t.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
             t.position = pos;

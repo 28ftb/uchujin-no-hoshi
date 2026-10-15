@@ -436,10 +436,18 @@ namespace Uchujin.Core
         }
     }
 
+    /// <summary>
+    /// 宇宙生物の窓口（Creatures が実装）。
+    /// ownerId の約束：<see cref="CreatureOwners.Any"/>（"*"）を渡すと「全所有者」とみなし、
+    /// この星に置かれた全員の個体（農場・作業場などで働く個体）と、ローカルプレイヤーの手持ちの個体をまとめて返す。
+    /// （他の星に預けた個体は "*" では返さない。）プレイヤーID を渡すとその人の個体だけを返す。
+    /// </summary>
     public interface ICreatureService
     {
+        /// <summary>ownerId の個体。"*"（<see cref="CreatureOwners.Any"/>）なら全所有者。</summary>
         IReadOnlyList<CreatureView> GetOwned(string ownerId);
         CreatureView Get(string uid);
+        /// <summary>能力を持つ個体（預けた個体は除く）。ownerId に "*" を渡すと全所有者から探す。</summary>
         IEnumerable<CreatureView> FindOwnedWithAbility(string ownerId, CreatureAbility ability, int minLevel = 1);
         bool SetPlacement(string uid, CreaturePlacement placement, string targetId);
         string GetSpeciesName(string speciesId);
@@ -448,6 +456,13 @@ namespace Uchujin.Core
         /// <summary>生物を渡す（住民からの贈り物・クエスト報酬など）。新しい個体UIDを返す。</summary>
         string GrantCreature(string ownerId, string speciesId, string source);
         IEnumerable<string> AllSpeciesIds { get; }
+    }
+
+    /// <summary>ICreatureService の ownerId に使う特別な値。</summary>
+    public static class CreatureOwners
+    {
+        /// <summary>全所有者（星に置かれた全員の個体＋ローカルプレイヤーの手持ち）。Creatures/Farming の AnyOwner と同じ値。</summary>
+        public const string Any = "*";
     }
 
     // ---------------- 料理・加工（Cooking モジュール） ----------------

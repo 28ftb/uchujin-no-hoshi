@@ -192,6 +192,15 @@ namespace Uchujin.Rocket
             UIManager.RegisterOverlay(displayOverlay);
 
             ScanInventoryForDiscoveries();
+
+            // 「出発中」のまま保存された星（次の星へ進む直前のセーブ・エンディング途中のセーブ）を読み込んだ場合は、
+            // エンディングはもう進行していないので、出発直前（帰還可能）の状態に戻す。戻さないと宇宙船を調べられず、二度と帰還できない。
+            if (IsAuthority && state.hasLaunched)
+            {
+                state.hasLaunched = false;
+                view?.Land();
+                MarkDirty();
+            }
             RefreshVisuals();
         }
 
@@ -302,6 +311,8 @@ namespace Uchujin.Rocket
             }
 
             if (!IsAuthority || !sceneBuilt) return;
+            // 帰還（エンディング）中は見物の住民の独り言を出さない（見送りの演出に割り込まないように）
+            if (state.hasLaunched) return;
             watcherCheckTimer -= deltaTime;
             if (watcherCheckTimer > 0f) return;
             watcherCheckTimer = 2f;
@@ -1081,7 +1092,8 @@ namespace Uchujin.Rocket
                 var cur = svc.Get(current);
                 if (cur != null && cur.OwnerId != ctx.IssuerId && ctx.Permission < PermissionLevel.Owner)
                     return CommandResult.Fail("他の人の生物です", "That creature belongs to someone else");
-                if (cur != null && cur.Placement == CreaturePlacement.RocketWorkshop) svc.SetPlacement(current, CreaturePlacement.Companion, null);
+                // この装置に置かれている時だけ手元へ戻す（別の装置へ移した個体はそのまま）
+                if (cur != null && cur.Placement == CreaturePlacement.RocketWorkshop && cur.PlacementTargetId == def.Id) svc.SetPlacement(current, CreaturePlacement.Companion, null);
                 if (cmd.asHelper) ds.helperUid = null;
                 else ds.creatureUid = null;
                 Changed();
@@ -1431,6 +1443,12 @@ namespace Uchujin.Rocket
             if (story != null)
             {
                 if (!story.IsEndingInProgress) story.BeginEnding();
+                // エンディングが始まらなかった（別の演出中など）場合は、出発中のまま固まらないよう元に戻す
+                if (!story.IsEndingInProgress && state.hasLaunched)
+                {
+                    state.hasLaunched = false;
+                    Changed();
+                }
                 return;
             }
             // Story モジュールが無い構成：簡易エンディング（トースト → そのまま継続）

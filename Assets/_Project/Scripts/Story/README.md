@@ -76,7 +76,7 @@
 - 章が変わった時の小さな演出：案内役が様子を見に来ていつもの言葉をかけ、食べ物（`story.guide_snack`）をくれる。第1〜3章の間は3日おきにも来る（第1章「世話を焼かれる」）。
 
 ### エンディング「最後の引っ越し」（`BeginEnding()`、最終章・ロケット §19）
-- `EndingStartedEvent` を発行。`GameState.Ending`、入力ロック、HUD 非表示、時間を止める（`AddGlobalPause("story.ending")`）。
+- `EndingStartedEvent` を発行。`GameState.Ending`、入力ロック、HUD 非表示。見送り〜村の場面は `TimeSystem.AddClockHold("story.ending")` で時計だけを止め（`AddGlobalPause` だと住民の移動まで止まる）、参加する住民を `HoldForCutscene(true)` で生活AIから外す（演出の終わり・中断・次の星へ進む前のセーブより先に必ず解除）。宇宙船の窓・辞書・クレジットの間は `AddGlobalPause("story.ending")`。
 - 住民がロケットの周りに集まる：親しさ60以上＝近くでプレゼント（80以上は泣く）、20以上・常連客・修理屋／料理好き／案内役＝近くで見送り、それ以外＝遠くから見ているだけ。
 - 修理屋の最後の点検（「いつか私もロケットを作りたい」＝第3章の夢）→ 料理好きの旅のお弁当（`story.travel_bento`）→ 仲の良い住民のプレゼント（`SharedItemIds.GiftBox`、data に送り主）
   → 引っ越した住民の手紙（`FormerResidents`、`SharedItemIds.Letter`、`ISpeechService.CreateRecord(... SpeechChannel.Letter ...)` の記録IDを data に入れ、タブレットの資料と住民辞典にも事実だけを記録）
@@ -99,7 +99,7 @@
 - 旅の記録（星ごとの滞在日数・出会った住民数・旅立ったか）を PlayerProfile に持ち歩き、「思い出」に表示する。
 
 ## 未実装・簡略化した内容（理由）
-- 住民の演出中の移動は `RequestGoTo` ＋ 時間切れ時に Transform を直接合わせる方式（`StoryActors.Warp`）。Residents 側が位置を別に持っている場合は戻される可能性がある（下の「コアへの追加要望」）。
+- 住民の演出中の移動は `RequestGoTo` ＋ 時間切れ時に `IResidentDirectory.Warp` で位置を合わせる方式（`StoryActors.Warp`）。
 - 住民の泣く・手を振るなどは `Utterance` の表情・身振り（`Expression.Crying`／`Gesture.Wave` 等）で伝え、実際のアニメーションは Residents／Language 側の表示に任せる。
 - ロケット本体は Rocket 担当の持ち物なので、離陸は代役（`RocketProxy`）。本体の見た目は「ロケット位置の半径5.5m以内・28m未満の Renderer を一時的に無効化」で隠す（簡略化）。
 - エピローグの「数日後に引っ越してくる新しい住民」は演出用の代役で、実際の住民の生成は行わない（実際の引っ越しは Residents のシステムが行う）。

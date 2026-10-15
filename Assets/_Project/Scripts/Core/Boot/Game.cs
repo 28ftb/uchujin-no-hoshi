@@ -184,6 +184,8 @@ namespace Uchujin.Core
             try { title = TitleScreenFactory?.Invoke(); }
             catch (Exception e) { Debug.LogException(e); }
             UIManager.Open(title ?? new FallbackTitleWindow());
+            // 読み込み失敗・演出の途中などで画面が暗転したまま戻ってきた場合に、タイトルが見えなくならないようにする
+            if (ScreenFader.Alpha > 0.01f) ScreenFader.FadeIn(0.6f);
         }
 
         public void StartNewPlanet(NewGameSettings settings)
@@ -260,9 +262,12 @@ namespace Uchujin.Core
             }
             if (planetFile == null || planetFile.planet == null)
             {
-                UIManager.Message(Loc.T("読み込み失敗", "Load failed"), Loc.T("セーブデータを読み込めませんでした。", "Could not read the save data."));
                 IsBusy = false;
-                ShowTitle();
+                // ShowTitle は開いているウィンドウを全部閉じるので、メッセージはタイトルを開いた後に出す。
+                // プレイ中の星から呼ばれた場合は、その星を片付けてからタイトルへ（星が残ったままタイトルにならないように）
+                if (Planet != null) ReturnToTitle(false);
+                else ShowTitle();
+                UIManager.Message(Loc.T("読み込み失敗", "Load failed"), Loc.T("セーブデータを読み込めませんでした。", "Could not read the save data."));
                 yield break;
             }
 
@@ -456,6 +461,8 @@ namespace Uchujin.Core
             SceneRoot = null;
             Players.ClearRemotes();
             if (LocalPlayer != null) LocalPlayer.ClearInputLocks();
+            // 演出の途中で星を離れても、次の星で HUD が消えたままにならないように
+            UIManager.HudVisible = true;
         }
 
         public void ReturnToTitle(bool save = true)
@@ -552,14 +559,35 @@ namespace Uchujin.Core
             EventBus.Publish(new DayStartedEvent { Day = newDay });
         }
 
+        /// <summary>睡眠の暗転中か（この間は Esc メニューを開かない。途中でタイトルへ戻ると片付け済みの星の時間が進んでしまうため）。</summary>
+        public bool IsSleeping { get; private set; }
+
         public IEnumerator SleepRoutine(PlayerState player, int wakeHour)
         {
-            if (player == null) yield break;
+            if (player == null || IsSleeping) yield break;
+            var planet = Planet;
+            IsSleeping = true;
             player.LockInput("sleep");
             ScreenFader.FadeOut(0.8f);
             yield return new WaitForSecondsRealtime(0.9f);
-            Time.SleepUntilHour(wakeHour, player.PlayerId);
+            // 暗転中に星を離れた（タイトルへ戻った・別の星へ移った）場合は、時間を進めずに終える
+            if (Planet == null || Planet != planet || State != GameState.Playing)
+            {
+                IsSleeping = false;
+                player.UnlockInput("sleep");
+                ScreenFader.FadeIn(0.5f);
+                yield break;
+            }
+            try { Time.SleepUntilHour(wakeHour, player.PlayerId); }
+            catch (Exception e) { Debug.LogException(e); }
             yield return new WaitForSecondsRealtime(0.4f);
+            IsSleeping = false;
+            if (Planet == null || Planet != planet)
+            {
+                player.UnlockInput("sleep");
+                ScreenFader.FadeIn(0.5f);
+                yield break;
+            }
             if (!WorldAuthority.IsGuest) SaveGame(false);
             ScreenFader.FadeIn(1f);
             player.UnlockInput("sleep");
@@ -585,6 +613,7 @@ namespace Uchujin.Core
         {
             if (GameInput.Pause)
             {
+                if (IsSleeping || IsBusy) return;
                 if (UIManager.OpenWindows.Count > 0) UIManager.CloseTop();
                 else if (State == GameState.Playing)
                 {

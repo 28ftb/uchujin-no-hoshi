@@ -210,16 +210,18 @@ namespace Uchujin.Story
             guideCacheAllowed = true;
             EnsureGuide();
 
-            // 次の星へ進む場合の引き継ぎ（選択式・仮）
-            if (PendingCarry != null)
+            // 次の星へ進む場合の引き継ぎ（選択式・仮）。持ち物を引き継ぐ開始（KeepProfile）の時だけ適用する。
+            // （「次の星へ」の開始が取り消されて残った設定を、新しいゲームに誤って適用しない）
+            if (ctx.IsFreshProfile)
+            {
+                PendingCarry = null;
+                // まったく新しい旅：旅の記録・見た目の控えも最初から（前のキャラクターの記録を持ち込まない）
+                profile = new StoryProfileState();
+            }
+            else if (PendingCarry != null)
             {
                 ApplyCarryOver(PendingCarry);
                 PendingCarry = null;
-            }
-            else if (ctx.Planet.planetIndex <= 1 && string.IsNullOrEmpty(ctx.Planet.previousWorldId))
-            {
-                // まったく新しい旅：旅の記録を最初から
-                profile.journey.Clear();
             }
         }
 
@@ -262,6 +264,7 @@ namespace Uchujin.Story
             if (Clock != null)
             {
                 Clock.RemoveGlobalPause("story.ending");
+                Clock.RemoveClockHold("story.ending");
                 Clock.RemoveGlobalPause("story.reel");
             }
             if (Game != null && Game.Planet != null) UpdateJourneyEntry(false);
@@ -609,7 +612,18 @@ namespace Uchujin.Story
         internal void ChooseReturnBeforeLaunch()
         {
             EventBus.Publish(new EndingFinishedEvent { Choice = PostEndingChoice.ReturnBeforeLaunch });
-            ending?.ReturnToRocketFront();
+            if (ending != null) ending.ReturnToRocketFront();
+            else
+            {
+                // 念のため：演出が無くても操作できる状態へ戻す（入力ロック・HUD・時間・状態）
+                UIManager.CloseAll();
+                if (LocalPlayer != null) LocalPlayer.UnlockInput("story");
+                Clock?.RemoveGlobalPause("story.ending");
+                Clock?.RemoveClockHold("story.ending");
+                UIManager.HudVisible = true;
+                Game.SetState(GameState.Playing);
+                ScreenFader.FadeIn(1f);
+            }
             ending = null;
             UpdateJourneyEntry(false);
             MarkDirty();
@@ -624,6 +638,8 @@ namespace Uchujin.Story
             EventBus.Publish(new EndingFinishedEvent { Choice = PostEndingChoice.NextPlanet });
             state.departedToNextPlanet = true;
             UpdateJourneyEntry(true);
+            // 見送りのために止めていた住民の生活AIを、この星のセーブより先に戻す（止めたまま保存しない）
+            ending?.ReleaseResidents();
             MarkDirty();
             Game.SaveGame(false);
 

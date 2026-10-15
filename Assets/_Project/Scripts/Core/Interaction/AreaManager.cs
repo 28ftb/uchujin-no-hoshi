@@ -67,6 +67,8 @@ namespace Uchujin.Core
             player.Position = pos;
             if (player.Avatar != null && (yaw.HasValue || to != null))
                 player.Avatar.rotation = Quaternion.Euler(0f, yaw ?? to.DefaultYaw, 0f);
+            // 屋内・鉱山は屋外から数千m離れているので、カメラが遠くから飛んでこないよう即座に合わせる
+            if (player.IsLocal && CameraRig.Instance != null && CameraRig.Instance.target == player.Avatar) CameraRig.Instance.SnapToTarget();
             to?.OnEnter?.Invoke(player);
             if (player.IsLocal) UI.ScreenFader.FadeIn(0.35f);
             EventBus.Publish(new AreaChangedEvent { PlayerId = player.PlayerId, FromAreaId = prev, ToAreaId = areaId });

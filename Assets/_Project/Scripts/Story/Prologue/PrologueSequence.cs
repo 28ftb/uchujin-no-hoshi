@@ -21,6 +21,8 @@ namespace Uchujin.Story
         private readonly bool arrival;
         private CutsceneDirector director;
         private Transform fxRoot;
+        /// <summary>光が落ちてくるまでの間、不時着地に既にある宇宙船（Rocket の表示）を隠す。</summary>
+        private readonly RendererHider shipHider = new RendererHider();
         public bool Running { get; private set; }
 
         // 診断画面
@@ -71,6 +73,7 @@ namespace Uchujin.Story
         public void Abort()
         {
             Running = false;
+            shipHider.Restore();
             if (director != null) Object.Destroy(director.gameObject);
             director = null;
         }
@@ -103,6 +106,7 @@ namespace Uchujin.Story
             ScreenFader.SetBlack();
             p.Position = playerSpot + Vector3.up * 0.1f;
             StoryActors.SetPlayerVisible(false);
+            HideShipUntilImpact(crash);
 
             // ---- 1. 空から落ちてくる光 ----
             Vector3 skyFrom = crash - toVillage * 140f + side * 50f + Vector3.up * (arrival ? 120f : 170f);
@@ -118,6 +122,7 @@ namespace Uchujin.Story
             if (Skipped) yield break;
 
             // ---- 2. 衝撃 ----
+            shipHider.Restore();
             director.Flash(Color.white, arrival ? 0.7f : 1f);
             director.Shake(arrival ? 0.5f : 0.9f, 1.3f);
             CutsceneFx.Impact(fxRoot, crash, arrival ? 60f : 120f);
@@ -419,6 +424,22 @@ namespace Uchujin.Story
             }
         }
 
+        private void HideShipUntilImpact(Vector3 crash)
+        {
+            var exclude = new List<Transform>();
+            var p = Game.Instance != null ? Game.Instance.LocalPlayer : null;
+            if (p != null && p.Avatar != null) exclude.Add(p.Avatar);
+            if (fxRoot != null) exclude.Add(fxRoot);
+            if (director != null) exclude.Add(director.transform);
+            var dir = StoryActors.Directory;
+            if (dir != null)
+            {
+                try { foreach (var r in dir.ActiveResidents) if (r != null && r.Transform != null) exclude.Add(r.Transform); }
+                catch (System.Exception) { }
+            }
+            shipHider.HideNear(crash, 5.5f, 28f, exclude);
+        }
+
         private static IResidentInfo FindHelper(IResidentDirectory dir, ResidentJob job, string excludeA, string excludeB)
         {
             IResidentInfo r = null;
@@ -440,6 +461,7 @@ namespace Uchujin.Story
         /// <summary>演出の後片付け（スキップされた場合も通る）。</summary>
         private IEnumerator Finish()
         {
+            shipHider.Restore();
             var game = Game.Instance;
             var p = game != null ? game.LocalPlayer : null;
             bool skipped = director != null && director.SkipRequested;

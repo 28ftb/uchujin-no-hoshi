@@ -45,6 +45,8 @@ namespace Uchujin.Story
         private bool grantItems;
         /// <summary>受け取り済みの物（"bento" "gift:&lt;id&gt;" "letter:&lt;id&gt;"）。スキップ時の重複防止。</summary>
         private readonly HashSet<string> granted = new HashSet<string>();
+        /// <summary>演出のために生活AIを止めている住民（必ず ReleaseResidents で戻す。住民の状態はセーブされるため）。</summary>
+        private readonly List<string> heldResidents = new List<string>();
         public bool Running { get; private set; }
 
         private Vector3 rocketPos, village, toVillage, side, front;
@@ -86,7 +88,10 @@ namespace Uchujin.Story
             game.SetState(GameState.Ending);
             UIManager.HudVisible = false;
             p.LockInput("story");
-            game.Time?.AddGlobalPause("story.ending");
+            // 見送り〜村の場面の間は時計だけを止める（AddGlobalPause だと住民の移動まで止まり、集まってくる・歩く演出が動かない）。
+            // 時計が止まっている間は予定・来店・日付更新が進まないので、住民が演出の途中で帰宅したり、他の用事に呼ばれたりしない。
+            // 住民が出てこない宇宙船の窓・辞書・クレジットの間は全体を止める（WindowAndDictionary の直前）。
+            game.Time?.AddClockHold("story.ending");
             EventBus.Publish(new EndingStartedEvent());
             director.Letterbox = true;
 
@@ -109,6 +114,7 @@ namespace Uchujin.Story
             StoryActors.SetPlayerVisible(false);
             yield return director.StartCoroutine(Epilogue());
             if (director.SkipRequested) { director.ResetSkip(); ScreenFader.SetBlack(); }
+            game.Time?.AddGlobalPause("story.ending");
             yield return director.StartCoroutine(WindowAndDictionary(director, record, heard, story.GuideCatchphraseConcept, p.Appearance, fxRoot, c => cabin = c, d => dictPage = d));
             director.ResetSkip();
             record.dictionaryWordCount = dictPage != null ? dictPage.TotalGlossed : 0;
@@ -207,6 +213,17 @@ namespace Uchujin.Story
             }
             PlaceArc(near, StoryTuning.EndingRingNear, StoryTuning.EndingRingMid, 75f, 7);
             PlaceArc(far, StoryTuning.EndingRingFar, StoryTuning.EndingRingFar + 5f, 110f, 10);
+
+            // 見送りの間は生活AI（予定・立ち話・就寝）を止める。時間は止めないので、夜でも家に帰らず、行き先の期限が切れてもその場に留まる
+            foreach (var a in all)
+            {
+                try
+                {
+                    dir.HoldForCutscene(a.info.Id, true);
+                    heldResidents.Add(a.info.Id);
+                }
+                catch (Exception e) { Debug.LogException(e); }
+            }
 
             var moves = new List<KeyValuePair<string, Vector3>>();
             foreach (var a in all)
@@ -671,8 +688,19 @@ namespace Uchujin.Story
             }
             var talkerA = Pick(r => r.Job != ResidentJob.Child, guideId, customer != null ? customer.Id : "");
             var talkerB = talkerA != null ? Pick(r => r.Job != ResidentJob.Child, guideId, talkerA.Id, customer != null ? customer.Id : "") : null;
-            if (talkerA != null) StoryActors.Warp(talkerA.Id, village + side * 1.2f + toVillage * 2f);
-            if (talkerB != null) StoryActors.Warp(talkerB.Id, village - side * 1.2f + toVillage * 2f);
+            // 見送りの立ち位置へ戻ろうとしないよう、話す場所そのものを行き先にしておく（時間は止めていない）
+            if (talkerA != null)
+            {
+                var spotA = village + side * 1.2f + toVillage * 2f;
+                StoryActors.GoTo(talkerA.Id, spotA, 60, "story.epilogue.talk");
+                StoryActors.Warp(talkerA.Id, spotA);
+            }
+            if (talkerB != null)
+            {
+                var spotB = village - side * 1.2f + toVillage * 2f;
+                StoryActors.GoTo(talkerB.Id, spotB, 60, "story.epilogue.talk");
+                StoryActors.Warp(talkerB.Id, spotB);
+            }
             if (talkerA != null && talkerB != null)
             {
                 StoryActors.Face(talkerA.Id, talkerB.Position);
@@ -759,17 +787,9 @@ namespace Uchujin.Story
         {
             ScreenFader.SetBlack();
             director.ClearSpeech();
-            // 宇宙の場面：空の色と霧を一時的に切る（着陸の前に戻す）
+            // 宇宙の場面：空の色と霧を一時的に切る（着陸の前に戻す。途中で中断された場合も RestoreSpaceView で戻す）
             var cam = director.Cam;
-            var prevFlags = cam != null ? cam.clearFlags : CameraClearFlags.Skybox;
-            var prevBg = cam != null ? cam.backgroundColor : Color.black;
-            bool prevFog = RenderSettings.fog;
-            if (cam != null)
-            {
-                cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.backgroundColor = new Color(0.01f, 0.01f, 0.03f);
-            }
-            RenderSettings.fog = false;
+            EnterSpaceView(cam);
             var cabin = CabinSet.Build(parent, appearance);
             onCabin?.Invoke(cabin);
             director.Shot(() => cabin.cameraPoint.position, () => cabin.lookPoint.position, 1.5f, true);
@@ -804,12 +824,7 @@ namespace Uchujin.Story
             yield return director.Wait(1.5f);
             director.Flash(Color.white, 1f);
             ScreenFader.SetBlack();
-            if (cam != null)
-            {
-                cam.clearFlags = prevFlags;
-                cam.backgroundColor = prevBg;
-            }
-            RenderSettings.fog = prevFog;
+            RestoreSpaceView();
             var land = BuildHomeLanding(parent, appearance);
             var landProxy = land.GetComponentInChildren<RocketProxy>();
             var groundPos = land.transform.position;
@@ -836,6 +851,45 @@ namespace Uchujin.Story
             yield return director.Wait(2.5f);
             yield return director.StartCoroutine(director.Fade(true, 1.4f));
             if (land != null) UnityEngine.Object.Destroy(land);
+        }
+
+        // ---- 宇宙の場面のカメラ設定（メインカメラは星をまたいで使い回されるため、中断時も必ず戻す）----
+        private static bool spaceViewActive;
+        private static Camera spaceViewCam;
+        private static CameraClearFlags savedClearFlags;
+        private static Color savedBackground;
+        private static bool savedFog;
+
+        private static void EnterSpaceView(Camera cam)
+        {
+            if (!spaceViewActive)
+            {
+                spaceViewActive = true;
+                spaceViewCam = cam;
+                savedClearFlags = cam != null ? cam.clearFlags : CameraClearFlags.Skybox;
+                savedBackground = cam != null ? cam.backgroundColor : Color.black;
+                savedFog = RenderSettings.fog;
+            }
+            if (cam != null)
+            {
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.01f, 0.01f, 0.03f);
+            }
+            RenderSettings.fog = false;
+        }
+
+        /// <summary>宇宙の場面で変えたカメラ・霧の設定を元に戻す（中断時にも呼ぶ。変えていなければ何もしない）。</summary>
+        internal static void RestoreSpaceView()
+        {
+            if (!spaceViewActive) return;
+            spaceViewActive = false;
+            if (spaceViewCam != null)
+            {
+                spaceViewCam.clearFlags = savedClearFlags;
+                spaceViewCam.backgroundColor = savedBackground;
+            }
+            spaceViewCam = null;
+            RenderSettings.fog = savedFog;
         }
 
         /// <summary>故郷の着陸地（簡単なセット）。</summary>
@@ -899,8 +953,25 @@ namespace Uchujin.Story
             Running = false;
         }
 
+        /// <summary>演出のために止めていた住民の生活AIを戻す（セーブの前・演出の終わり・中断時に必ず呼ぶ）。</summary>
+        internal void ReleaseResidents()
+        {
+            if (heldResidents.Count == 0) return;
+            var dir = StoryActors.Directory;
+            if (dir != null)
+            {
+                foreach (var id in heldResidents)
+                {
+                    try { dir.HoldForCutscene(id, false); }
+                    catch (Exception e) { Debug.LogException(e); }
+                }
+            }
+            heldResidents.Clear();
+        }
+
         private void Cleanup()
         {
+            ReleaseResidents();
             hider.Restore();
             rocketHidden = false;
             if (proxy != null) UnityEngine.Object.Destroy(proxy.gameObject);
@@ -910,7 +981,12 @@ namespace Uchujin.Story
             if (fxRoot != null) UnityEngine.Object.Destroy(fxRoot.gameObject);
             fxRoot = null;
             var game = Game.Instance;
-            if (game != null && game.Time != null) game.Time.RemoveGlobalPause("story.ending");
+            if (game != null && game.Time != null)
+            {
+                game.Time.RemoveGlobalPause("story.ending");
+                game.Time.RemoveClockHold("story.ending");
+            }
+            RestoreSpaceView();
             StoryActors.SetPlayerVisible(true);
         }
     }

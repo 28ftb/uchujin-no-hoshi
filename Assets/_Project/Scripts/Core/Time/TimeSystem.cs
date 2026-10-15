@@ -82,6 +82,7 @@ namespace Uchujin.Core
         private float minuteAccumulator;
         private readonly HashSet<string> personalPauseTokens = new HashSet<string>();
         private readonly HashSet<string> globalPauseTokens = new HashSet<string>();
+        private readonly HashSet<string> clockHoldTokens = new HashSet<string>();
 
         /// <summary>現在時間が止まっているか。</summary>
         public bool IsPaused
@@ -95,6 +96,12 @@ namespace Uchujin.Core
         }
 
         public bool PauseInSoloWhenTabletOpen { get; set; } = true;
+
+        /// <summary>
+        /// 時計だけが止まっているか（演出用）。IsPaused とは違い、住民の歩行・アニメーションなど実時間で動く処理は止めない。
+        /// 時刻・日付・毎分／毎時の処理（予定・来店・日付更新）だけが進まなくなる。
+        /// </summary>
+        public bool IsClockHeld => clockHoldTokens.Count > 0;
 
         public override void PreparePlanet(PlanetContext ctx)
         {
@@ -111,6 +118,7 @@ namespace Uchujin.Core
         {
             personalPauseTokens.Clear();
             globalPauseTokens.Clear();
+            clockHoldTokens.Clear();
             minuteAccumulator = 0f;
         }
 
@@ -120,10 +128,13 @@ namespace Uchujin.Core
         /// <summary>全員の時間を止める（メニュー、ホストのカットシーン等）。</summary>
         public void AddGlobalPause(string token) => globalPauseTokens.Add(token);
         public void RemoveGlobalPause(string token) => globalPauseTokens.Remove(token);
+        /// <summary>演出の間、時計だけを止める（住民は RequestGoTo で歩ける。エンディングの見送りなど）。必ず RemoveClockHold で戻す。</summary>
+        public void AddClockHold(string token) => clockHoldTokens.Add(token);
+        public void RemoveClockHold(string token) => clockHoldTokens.Remove(token);
 
         public override void Tick(float deltaTime)
         {
-            if (IsPaused) return;
+            if (IsPaused || IsClockHeld) return;
             // ゲストはホストのスナップショットで補正されるが、表示の滑らかさのためローカルでも進める。
             float secondsPerMinute = RealSecondsPerGameDay / MinutesPerDay / Mathf.Clamp(SpeedMultiplier, 0.1f, 10f);
             minuteAccumulator += deltaTime / secondsPerMinute;

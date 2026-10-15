@@ -128,6 +128,8 @@ namespace Uchujin.Story
         public void Abort()
         {
             Running = false;
+            EndingSequence.RestoreSpaceView();
+            if (Game.Instance != null && Game.Instance.Time != null) Game.Instance.Time.RemoveGlobalPause("story.reel");
             if (root != null) Object.Destroy(root.gameObject);
             if (director != null) Object.Destroy(director.gameObject);
             director = null;
