@@ -355,8 +355,10 @@ namespace Uchujin.Housing
             if (HouseGeometry.HasItemsOnTop(state, f)) return CommandResult.Fail("上に置いた物を先に片付けてください", "Clear the things on top first");
             if (!string.IsNullOrEmpty(f.creatureUid))
             {
-                // 住んでいた生き物は家で自由に暮らす
-                Game.Service<ICreatureService>()?.SetPlacement(f.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse);
+                // 住んでいた生き物は家で自由に暮らす（ほかの場所へ移った後なら、その配置を上書きしない）
+                var cs = Game.Service<ICreatureService>();
+                if (IsCreatureLivingIn(cs, f.creatureUid, f.instanceId))
+                    cs.SetPlacement(f.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse);
                 f.creatureUid = null;
             }
             f.location = HousingConst.LocStored;
@@ -750,7 +752,7 @@ namespace Uchujin.Housing
                 {
                     var f = FindFurniture(cmd.instanceId);
                     if (f == null) return CommandResult.Fail("家具が見つかりません", "Furniture not found");
-                    if (!string.IsNullOrEmpty(f.creatureUid) && f.creatureUid != cmd.creatureUid)
+                    if (!string.IsNullOrEmpty(f.creatureUid) && f.creatureUid != cmd.creatureUid && IsCreatureLivingIn(creatures, f.creatureUid, f.instanceId))
                         creatures.SetPlacement(f.creatureUid, CreaturePlacement.Home, HousingConst.LocHouse);
                     if (!creatures.SetPlacement(cmd.creatureUid, CreaturePlacement.Habitat, f.instanceId)) return CommandResult.Fail("今は移せないようです", "Can't move it right now");
                     f.creatureUid = cmd.creatureUid;

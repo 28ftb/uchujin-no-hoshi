@@ -187,6 +187,10 @@ namespace Uchujin.Fishing
                 if (d.magnitude <= s.Radius) return s;
             }
             if (layout == null) return null;
+            // 地形の範囲外（家の中・鉱山など屋外から離れた座標）は水面ではない。
+            // 高さ場は範囲外を端のマスに丸めるため、端が海の星では家の中や鉱山でも「水」と判定されてしまう。
+            float half = layout.WorldSize * 0.5f + 10f;
+            if (Mathf.Abs(point.x) > half || Mathf.Abs(point.z) > half) return null;
             if (!layout.IsWater(point))
             {
                 // 水面判定が無い／ずれている場合の保険：釣り場の水面位置のすぐ近くなら水とみなす

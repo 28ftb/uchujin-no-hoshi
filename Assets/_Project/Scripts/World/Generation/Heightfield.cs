@@ -43,6 +43,9 @@ namespace Uchujin.World
         public float XOf(int ix) => Min + ix * Step;
         public float ZOf(int iz) => Min + iz * Step;
 
+        /// <summary>範囲外でも端の続きとして扱う幅（m）。これより外は水なし。</summary>
+        private const float OutOfBoundsMargin = 16f;
+
         public void ToGrid(float x, float z, out int ix, out int iz)
         {
             ix = Mathf.Clamp(Mathf.RoundToInt((x - Min) / Step), 0, N - 1);
@@ -83,6 +86,10 @@ namespace Uchujin.World
         /// <summary>水面か（地形より水面が高く、橋の上ではない）。</summary>
         public bool IsWater(float x, float z)
         {
+            // 地形の範囲から大きく外れた座標（家の中・鉱山など屋外から離れた場所）は水ではない。
+            // ToGrid は範囲外を端のマスに丸めるため、端が海だと屋内でも「水」と判定されてしまう。
+            float max = Min + (N - 1) * Step;
+            if (x < Min - OutOfBoundsMargin || x > max + OutOfBoundsMargin || z < Min - OutOfBoundsMargin || z > max + OutOfBoundsMargin) return false;
             ToGrid(x, z, out int ix, out int iz);
             float w = WaterY[Index(ix, iz)];
             if (float.IsNaN(w)) return false;

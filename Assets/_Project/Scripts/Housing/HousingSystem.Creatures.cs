@@ -328,6 +328,34 @@ namespace Uchujin.Housing
             var removeDrivers = new List<string>();
             foreach (var kv in drivers) if (!alive.Contains(kv.Key)) removeDrivers.Add(kv.Key);
             foreach (var id in removeDrivers) drivers.Remove(id);
+            ClearStaleHabitatCreatures(creatures);
+        }
+
+        /// <summary>
+        /// 住処の家具に記録された生物が、別の場所（農場・調理器具・作業場・同行など）へ移されていたら記録を外す。
+        /// 外さないと「住んでいる」表示・訪問の評価が残り、家具を片付けた時に別の場所で働く子を家へ呼び戻してしまう。
+        /// </summary>
+        private void ClearStaleHabitatCreatures(ICreatureService creatures)
+        {
+            if (!IsAuthority || creatures == null || state == null) return;
+            bool changed = false;
+            foreach (var f in state.furniture)
+            {
+                if (f == null || string.IsNullOrEmpty(f.creatureUid)) continue;
+                if (IsCreatureLivingIn(creatures, f.creatureUid, f.instanceId)) continue;
+                f.creatureUid = null;
+                changed = true;
+            }
+            if (changed) MarkDirty();
+        }
+
+        /// <summary>その生物が今この家具（住処）に住んでいるか。</summary>
+        internal static bool IsCreatureLivingIn(ICreatureService creatures, string uid, string instanceId)
+        {
+            if (creatures == null || string.IsNullOrEmpty(uid)) return false;
+            CreatureView cv = null;
+            try { cv = creatures.Get(uid); } catch (Exception e) { Debug.LogException(e); }
+            return cv != null && cv.Placement == CreaturePlacement.Habitat && cv.PlacementTargetId == instanceId;
         }
 
         private static string SafeSpeciesName(ICreatureService creatures, string speciesId)

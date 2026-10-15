@@ -165,7 +165,8 @@ namespace Uchujin.Housing
                 var go = PrimitiveBuilder.Empty("ResidentDoor_" + f.id, residentDoorsRoot, pos);
                 go.transform.rotation = Quaternion.Euler(0, f.rotationY, 0);
                 PrimitiveBuilder.Part(go.transform, PrimitiveType.Cube, new Vector3(0, 0.012f, 0.2f), new Vector3(1.1f, 0.02f, 0.6f), new Color(0.7f, 0.55f, 0.4f), "Doormat");
-                PrimitiveBuilder.AddBoxCollider(go, new Vector3(0, 1.1f, 0), new Vector3(1.6f, 2.2f, 1.2f), true);
+                // 当たりは建物の壁側へ寄せる（家の前＝入口の少し先で過ごす住民と [E] を取り合わないように）
+                PrimitiveBuilder.AddBoxCollider(go, new Vector3(0, 1.1f, -0.5f), new Vector3(1.6f, 2.2f, 1.0f), true);
                 var door = go.AddComponent<ResidentDoor>();
                 door.System = this;
                 door.FacilityId = f.id;

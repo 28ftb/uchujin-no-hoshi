@@ -164,10 +164,18 @@ namespace Uchujin.Creatures
 
         private Vector3 HomeAnchor(WorldLayout layout, Vector3 fallback)
         {
-            var housing = Game.Service<IHousingService>();
-            if (housing != null) return housing.PlayerHomeEntrance + new Vector3(0, 0, 2.5f);
+            // 家の正面（入口から建物の外向き）へ 2.5m。ワールドの +Z 固定だと、家の向きによっては建物の中に埋まる
             var f = layout != null ? layout.GetFacility(FacilityType.PlayerHouse) : null;
-            return f != null ? f.entrance + new Vector3(0, 0, 2.5f) : fallback;
+            Vector3 outward = Vector3.forward;
+            if (f != null)
+            {
+                var d = f.entrance - f.position;
+                d.y = 0f;
+                if (d.sqrMagnitude > 0.01f) outward = d.normalized;
+            }
+            var housing = Game.Service<IHousingService>();
+            if (housing != null) return housing.PlayerHomeEntrance + outward * 2.5f;
+            return f != null ? f.entrance + outward * 2.5f : fallback;
         }
 
         // ---------------- 生物同士の交流（生き物仕様 §7、家具仕様 §9.2） ----------------

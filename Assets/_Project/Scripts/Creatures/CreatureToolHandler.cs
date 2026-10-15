@@ -40,7 +40,15 @@ namespace Uchujin.Creatures
                         if (item == null || item.IsEmpty) return false;
                         if (CreatureDatabase.IsCaseItem(item.itemId)) return sys.ReleaseFromCase(ctx.SelectedSlot);
                         var def = item.Definition;
-                        if (def.Category == ItemCategory.CreatureFood) return sys.PlaceBait(ctx.SelectedSlot, ctx.GroundPoint);
+                        // 野生の生き物が来るのは屋外と鉱山だけ。家の中・住民の家・店の中では餌を置かない（無駄に失くさない）
+                        bool wildArea = ctx.AreaId == AreaIds.Overworld || AreaIds.IsMine(ctx.AreaId);
+                        if (def.Category == ItemCategory.CreatureFood)
+                        {
+                            if (wildArea) return sys.PlaceBait(ctx.SelectedSlot, ctx.GroundPoint);
+                            UIManager.Toast(Loc.T("ここに餌を置いても、野生の生き物は来ないようだ", "No wild creatures will come here for bait"), 2f);
+                            return true;
+                        }
+                        if (!wildArea) return false;
                         // 作物は、好物にしている野生の生き物が近くにいる時だけ餌として置く（農場の作業と取り合わない）
                         if ((def.Category == ItemCategory.Crop || def.HasTag(ItemTags.Fruit)) && !InFarm(ctx.GroundPoint) && AnyWildLikes(def, ctx.Origin))
                             return sys.PlaceBait(ctx.SelectedSlot, ctx.GroundPoint);

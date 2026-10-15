@@ -543,7 +543,8 @@ namespace Uchujin.Fishing
                 var toDoor = hut.entrance - hut.position;
                 toDoor.y = 0;
                 var side = toDoor.sqrMagnitude > 0.01f ? Vector3.Cross(Vector3.up, toDoor.normalized) : Vector3.right;
-                pos = hut.entrance + side * 2.2f;
+                // 入口の右側の前には World が施設の看板を立てるので、左側（-side）に置く（看板にめり込み [E] を取り合うのを避ける）
+                pos = hut.entrance - side * 2.2f;
                 rotY = hut.rotationY;
             }
             else if (layout.FishingSpots.Count > 0)

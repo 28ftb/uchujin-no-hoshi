@@ -59,6 +59,8 @@ namespace Uchujin.Housing
             furnitureObjects.Clear();
             furnitureSigs.Clear();
             builtRoomsSig = null;
+            builtRoomRects.Clear();
+            builtRoomOrigins.Clear();
             builtGardenSig = null;
 
             Game.Areas.Register(new AreaDescriptor
@@ -93,6 +95,8 @@ namespace Uchujin.Housing
             manepiSpawnFailed = false;
             sceneBuilt = false;
             builtRoomsSig = builtGardenSig = null;
+            builtRoomRects.Clear();
+            builtRoomOrigins.Clear();
         }
 
         private void BuildOutsideDoor()
@@ -109,7 +113,8 @@ namespace Uchujin.Housing
             PrimitiveBuilder.Part(door.transform, PrimitiveType.Cube, new Vector3(0, 0.015f, 0.2f), new Vector3(1.3f, 0.03f, 0.8f), new Color(0.75f, 0.45f, 0.4f), "Doormat");
             PrimitiveBuilder.Part(door.transform, PrimitiveType.Cylinder, new Vector3(0.75f, 0.6f, 0.4f), new Vector3(0.08f, 0.6f, 0.08f), DoorColor, "Post");
             PrimitiveBuilder.EmissivePart(door.transform, PrimitiveType.Sphere, new Vector3(0.75f, 1.25f, 0.4f), Vector3.one * 0.18f, new Color(1f, 0.85f, 0.55f), "DoorLamp");
-            PrimitiveBuilder.AddBoxCollider(door, new Vector3(0, 1.1f, 0), new Vector3(1.6f, 2.2f, 1.2f), true);
+            // 当たりは家の壁側へ寄せる（玄関前で待つ訪問者・同行の生き物と [E] を取り合わないように）
+            PrimitiveBuilder.AddBoxCollider(door, new Vector3(0, 1.1f, -0.5f), new Vector3(1.6f, 2.2f, 1.0f), true);
             var si = SimpleInteractable.Attach(door, "家に入る", "Enter home", p => EnterHome(p));
             si.canInteract = p => p != null;
         }
@@ -164,8 +169,13 @@ namespace Uchujin.Housing
             string roomsSig = RoomsSignature();
             if (roomsSig != builtRoomsSig)
             {
+                // 増築の完了（日付更新・睡眠中が多い）で手前の部屋が広がると、後ろの部屋の位置がずれる。
+                // 家の中にいるプレイヤーを、いた部屋と一緒に動かす（壁にめり込む・別の部屋へ飛ぶのを防ぐ）
+                var roomShift = LocalRoomShift();
                 BuildHouseShell();
                 builtRoomsSig = roomsSig;
+                SnapshotRoomRects();
+                if (roomShift.sqrMagnitude > 0.0001f && LocalPlayer != null) LocalPlayer.Position += roomShift;
                 // 部屋の位置が変わると家具の位置も変わるので全部作り直す
                 foreach (var fo in furnitureObjects.Values) if (fo != null) UnityEngine.Object.Destroy(fo.gameObject);
                 furnitureObjects.Clear();
@@ -209,6 +219,41 @@ namespace Uchujin.Housing
             if (placementActive) placementVisualsDirty = true;
             refreshCreaturesSoon = true;
             visitorProxiesDirty = true;
+        }
+
+        /// <summary>前回作った部屋の位置と広さ（部屋番号 → 床の左下・幅・奥行き[m]）。</summary>
+        private readonly Dictionary<int, Rect> builtRoomRects = new Dictionary<int, Rect>();
+        private readonly Dictionary<int, Vector3> builtRoomOrigins = new Dictionary<int, Vector3>();
+
+        private void SnapshotRoomRects()
+        {
+            builtRoomRects.Clear();
+            builtRoomOrigins.Clear();
+            foreach (var r in state.rooms)
+            {
+                var o = HouseGeometry.RoomOrigin(state, r);
+                builtRoomOrigins[r.index] = o;
+                builtRoomRects[r.index] = new Rect(o.x, o.z, r.widthCells * HousingConst.Cell, r.depthCells * HousingConst.Cell);
+            }
+        }
+
+        /// <summary>ローカルプレイヤーが家の中にいる時、いた部屋の原点が新しい間取りでどれだけ動くか。</summary>
+        private Vector3 LocalRoomShift()
+        {
+            var p = LocalPlayer;
+            if (p == null || p.CurrentAreaId != HousingConst.LocHouse || builtRoomRects.Count == 0) return Vector3.zero;
+            var pos = p.Position;
+            foreach (var kv in builtRoomRects)
+            {
+                var rect = kv.Value;
+                if (pos.x < rect.xMin - 0.3f || pos.x > rect.xMax + 0.3f || pos.z < rect.yMin - 0.3f || pos.z > rect.yMax + 0.3f) continue;
+                var room = HouseGeometry.GetRoom(state, kv.Key);
+                if (room == null || !builtRoomOrigins.TryGetValue(kv.Key, out var oldOrigin)) return Vector3.zero;
+                var delta = HouseGeometry.RoomOrigin(state, room) - oldOrigin;
+                delta.y = 0f;
+                return delta;
+            }
+            return Vector3.zero;
         }
 
         private FurnitureObject BuildFurnitureObject(PlacedFurniture f)

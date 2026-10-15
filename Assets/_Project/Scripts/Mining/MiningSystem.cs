@@ -216,7 +216,8 @@ namespace Uchujin.Mining
                 var toDoor = smith.entrance - smith.position;
                 toDoor.y = 0;
                 var side = toDoor.sqrMagnitude > 0.01f ? Vector3.Cross(Vector3.up, toDoor.normalized) : Vector3.right;
-                anvilPos = smith.entrance + side * 2.2f + (toDoor.sqrMagnitude > 0.01f ? toDoor.normalized : Vector3.zero) * 0.8f;
+                // 入口の右側には World の飾りの金床と施設の看板があるので、左側（-side）に置く（重なり・[E] の取り合いを避ける）
+                anvilPos = smith.entrance - side * 2.2f + (toDoor.sqrMagnitude > 0.01f ? toDoor.normalized : Vector3.zero) * 0.8f;
                 facilityId = smith.id;
             }
             else anvilPos = pos + toVillage.normalized * 4f + Vector3.Cross(Vector3.up, toVillage.normalized) * 3f;
@@ -508,12 +509,15 @@ namespace Uchujin.Mining
             if (L == null) return;
             var spawn = viaStairs ? L.CellCenter(L.Entry) : L.CellCenter(L.Elevator) + new Vector3(MiningTuning.Cell, 0f, 0f);
             Game.Areas.Transition(player, AreaIds.MineFloor(floor), spawn + Vector3.up * 0.2f, 0f);
+            // 鉱山は屋外から数千m離れた座標にあるので、カメラを追従させず即座に合わせる（遠くから飛んでくるのを防ぐ）
+            if (player.IsLocal) CameraRig.Instance?.SnapToTarget();
         }
 
         public void ExitToSurface(PlayerState player)
         {
             if (player == null) return;
             Game.Areas.Transition(player, AreaIds.Overworld, surfaceExit, surfaceExitYaw);
+            if (player.IsLocal) CameraRig.Instance?.SnapToTarget();
         }
 
         private void OnEnterFloor(PlayerState p, int f)
