@@ -164,3 +164,38 @@ Unity で開いた後、まずコンパイルエラーの解消 → 起動 → �
 - 住民の全体状態（親しさ・記憶など）はゲストに最大10秒ほど遅れて届く。
 - ゲストの生物を預ける操作と配置の操作は続けて送るだけで、到達・順序保証の通信が前提。
 - 住民の家の中の代理の姿は、入った端末でだけ表示される。
+
+## 7. ローカル環境で直したこと（2026-10-15、Windows 11 / Unity 6000.6.4f1）
+初めて Unity Editor（6000.6.4f1、`C:\Program Files\Unity\Hub\Editor\6000.6.4f1\Editor\Unity.exe`）で開き、バッチモードでコンパイルした。
+**ランタイム（Assembly-CSharp）・Editor（Assembly-CSharp-Editor）ともエラー0**。残る警告は未使用フィールドの CS0414 が2件（`HousingSystem.providerRegistered`、`HousingSystem.placementVisualsDirty`）だけ。
+
+### コンパイルエラー・警告の修正
+| 場所 | 原因 | 修正 |
+|---|---|---|
+| `Creatures/CreatureVisuals.cs` `SetCamouflage` | `Object.GetInstanceID()` が Unity 6.6 で使用不可（CS0619、`GetEntityId` に置き換え） | 擬態の濃淡（4段階）を部位の並び順で決める。見た目の意図（部位ごとに少しずつ違う色）は同じ |
+| `Core/Boot/Game.cs`・`Core/Boot/SystemManifest.cs` | `FindFirstObjectByType` が非推奨（CS0618） | `FindAnyObjectByType` に置き換え（存在確認だけなので挙動は同じ） |
+| `Weather/WeatherVisuals.cs` `FindSun` | `FindObjectsByType(FindObjectsSortMode)` が非推奨（CS0618） | `#if UNITY_6000_6_OR_NEWER` で引数なしの `FindObjectsByType<Light>()` を使う（型チェック用の 2021.3 参照では従来の呼び方） |
+
+最初の想定にあった「新 Input System の分岐」「Editor フォルダのスクリプト」「`#if UNITY_EDITOR` の中」はエラーなし。`#if UCHUJIN_EOS`（`EosP2PTransport.cs`）は未定義のためコンパイル対象外のまま（未確認）。
+
+### プロジェクト設定
+- `ProjectVersion.txt`：仮の 6000.0.58f1 → **6000.6.4f1**。
+- 初回インポートで Unity が生成した `ProjectSettings/*.asset`・`SceneTemplateSettings.json`・`Packages/packages-lock.json`・Assets 以下の `.meta` をコミット。`manifest.json` には Unity 6.6 が組み込みモジュール（adaptiveperformance・physicscore2d・tetgen・timelinefoundation・vectorgraphics）を自動追加した。
+- Player Settings の **Active Input Handling を「Both」**（`activeInputHandler: 2`）。Input System パッケージは入れていないが、`ENABLE_LEGACY_INPUT_MANAGER` が定義されるので `GameInput` は旧 Input Manager の経路でコンパイル・動作する。
+- 描画パイプラインは Built-in のまま（Graphics Settings の既定）。
+- `Assets/_Project/Scenes/Main.unity` を `UchujinEditorMenu.CreateMainScene`（`-executeMethod`）で作成し、Build Settings の先頭に登録。
+- Enter Play Mode Options は既定（ドメイン・シーンとも再読み込みする）。静的状態が再生ごとに初期化される前提のコードなので、「Reload Domain」を切らないこと。
+
+### ツール
+- `Tools/CompileCheck/check.sh`：日本語環境では dotnet の出力が日本語になり、成功しても NG と判定していたため `DOTNET_CLI_UI_LANGUAGE=en` を設定。
+- `Editor/BatchSmokeTest.cs`（新規・Editor 専用）：`-batchmode -nographics -executeMethod Uchujin.EditorTools.BatchSmokeTest.Run`（`-quit` は付けない）で、再生 → タイトル → 新しい星（プロローグあり）→ 時間を20倍で15秒進行 → 睡眠（翌朝）→ セーブ → タイトル → ロード を自動で行い、エラー・例外を集計する。作ったテスト用セーブは最後に削除。
+  **実行結果：ゲームのコード由来のエラー・例外・警告は0件**（Unity Editor 自身の検索インデックス処理の例外が1件出るが、ゲームとは無関係）。
+
+### 起動時の静的点検
+- `RuntimeInitializeOnLoadMethod`：`GameBootstrap.Boot`（AfterSceneLoad、既存の Game・自動起動の無効化を確認してから生成）、`NetDevArgs.ApplyTestSlot`（BeforeSceneLoad、引数が無ければ何もしない）。問題なし。
+- `Shader.Find`：全箇所で複数の候補 → 最後は `MaterialCache.LitShader` へフォールバック。Built-in の Editor 再生では `Standard` / `Sprites/Default` が必ずあるので失敗しない。**ビルド時**は `Standard` などが Always Included Shaders に入っていないため、ビルド前に Graphics Settings への追加が必要（未対応）。
+- OS フォント：`Font.CreateDynamicFontFromOSFont` に日本語フォントの候補を複数渡し、null なら既定フォントのまま。例外の心配はない。文字化けの有無は画面で要確認。
+
+### まだ確認できていないこと
+- 画面表示（IMGUI・3D の見た目・ピンクのマテリアル・文字化け）と操作感。→ `Docs/PLAYTEST_CHECKLIST.md` の手順で Editor 再生して確認する。
+- ビルド（Always Included Shaders の設定を含む）、マルチ（LAN UDP の2起動・EOS）。

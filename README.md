@@ -11,7 +11,7 @@
 ## ローカルで開く
 
 1. Unity Hub で **Unity 6（6000.0 LTS 以降）** をインストール（2022.3 LTS でも動く想定ですが未確認）。
-   `ProjectSettings/ProjectVersion.txt` は `6000.0.58f1` にしてあります。手元の別バージョンで開いても構いません。
+   `ProjectSettings/ProjectVersion.txt` は `6000.6.4f1`（コンパイルでエラー0を確認した版）です。手元の別バージョンで開いても構いません。
 2. このリポジトリを clone し、Unity Hub の「追加 → ディスクから追加」でフォルダを選んで開く。
    初回は `ProjectSettings` の残りと `Library/` が自動生成されます（数分かかります）。
 3. メニュー **「宇宙人の星 → メインシーンを作成して開く」** を実行（空のシーン `Assets/_Project/Scenes/Main.unity` ができます）。
