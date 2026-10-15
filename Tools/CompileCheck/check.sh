@@ -4,6 +4,7 @@
 #   Tools/CompileCheck/check.sh Fishing Mining … Core と指定モジュールだけを型チェック（他モジュールに依存していないことの確認）
 # ※ Unity Editor でのコンパイル・実行確認の代わりにはならない。
 set -euo pipefail
+export DOTNET_CLI_UI_LANGUAGE=en   # 日本語環境でも "Build succeeded" で成否を判定できるように
 here="$(cd "$(dirname "$0")" && pwd)"
 if [ $# -eq 0 ]; then set -- All; fi
 name="$(IFS=_; echo "$*")"
