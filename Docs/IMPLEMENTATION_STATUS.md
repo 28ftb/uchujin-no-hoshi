@@ -196,6 +196,13 @@ Unity で開いた後、まずコンパイルエラーの解消 → 起動 → �
 - `Shader.Find`：全箇所で複数の候補 → 最後は `MaterialCache.LitShader` へフォールバック。Built-in の Editor 再生では `Standard` / `Sprites/Default` が必ずあるので失敗しない。**ビルド時**は `Standard` などが Always Included Shaders に入っていないため、ビルド前に Graphics Settings への追加が必要（未対応）。
 - OS フォント：`Font.CreateDynamicFontFromOSFont` に日本語フォントの候補を複数渡し、null なら既定フォントのまま。例外の心配はない。文字化けの有無は画面で要確認。
 
+### 画面ありの自動確認
+- `BatchSmokeTest` を `-batchmode` なしで実行すると、各段階の Game ビューを `Logs/Smoke/*.png` に保存する。
+  タイトル〜キャラメイク〜プロローグ（完了まで待つ）〜自由行動〜会話〜商店〜タブレット〜睡眠〜セーブ〜ロードで **エラー・例外0件**。文字化け・ピンクなし。
+- 見つけて直したもの：`Story/CharacterMake/CharacterMakeWindow.cs` のプレビュー回転ボタンの記号 ⟲⟳ が OS フォントに無く豆腐になるため ◀ ▶ に変更。
+- 気づいたが直していないもの（判断待ち）：操作説明の1行と持ち物スロットの重なり、昼の明るすぎ、**ロードすると位置が戻らず不時着地点から始まる**（プレイヤー位置をセーブしていない。仕様の判断が必要）。
+- 詳細は `Docs/PLAYTEST_CHECKLIST.md` の「自動確認の結果」。
+
 ### まだ確認できていないこと
-- 画面表示（IMGUI・3D の見た目・ピンクのマテリアル・文字化け）と操作感。→ `Docs/PLAYTEST_CHECKLIST.md` の手順で Editor 再生して確認する。
+- キー・マウス・IME による実際の操作感、音。→ `Docs/PLAYTEST_CHECKLIST.md` の手順で Editor 再生して確認する。
 - ビルド（Always Included Shaders の設定を含む）、マルチ（LAN UDP の2起動・EOS）。
