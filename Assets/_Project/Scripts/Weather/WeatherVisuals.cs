@@ -58,7 +58,11 @@ namespace Uchujin.Weather
 
         private void FindSun()
         {
+#if UNITY_6000_6_OR_NEWER
+            foreach (var l in FindObjectsByType<Light>())
+#else
             foreach (var l in FindObjectsByType<Light>(FindObjectsSortMode.None))
+#endif
             {
                 if (l.type != LightType.Directional) continue;
                 if (sun == null || l.name == "Sun") sun = l;

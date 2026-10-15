@@ -58,7 +58,7 @@ namespace Uchujin.Core
         private static void Boot()
         {
             if (Game.Instance != null) return;
-            if (UnityEngine.Object.FindFirstObjectByType<Game>() != null) return;
+            if (UnityEngine.Object.FindAnyObjectByType<Game>() != null) return;
             if (PlayerPrefs.GetInt("uchujin.disableAutoBoot", 0) == 1) return;
             var go = new GameObject("Game");
             go.AddComponent<Game>();

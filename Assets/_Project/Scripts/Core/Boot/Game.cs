@@ -158,7 +158,7 @@ namespace Uchujin.Core
 
         private void EnsureSun()
         {
-            if (FindFirstObjectByType<Light>() != null) return;
+            if (FindAnyObjectByType<Light>() != null) return;
             var go = new GameObject("Sun");
             go.transform.SetParent(transform, false);
             var light = go.AddComponent<Light>();

@@ -479,13 +479,14 @@ namespace Uchujin.Creatures
         public void SetCamouflage(Color? envColor)
         {
             camouflaged = envColor.HasValue;
+            int shade = 0; // 部位ごとの濃淡（Unity 6 で GetInstanceID が使えないため並び順で決める）
             foreach (var r in allRenderers)
             {
                 if (r == null) continue;
                 if (envColor.HasValue)
                 {
                     if (r.gameObject.name == "Eye" || r.transform.parent != null && r.transform.parent.name == "Eye") continue;
-                    r.sharedMaterial = MaterialCache.Get(Color.Lerp(envColor.Value, envColor.Value * 0.85f, (r.GetInstanceID() & 3) / 3f));
+                    r.sharedMaterial = MaterialCache.Get(Color.Lerp(envColor.Value, envColor.Value * 0.85f, (shade++ & 3) / 3f));
                 }
                 else if (originalMaterials.TryGetValue(r, out var m)) r.sharedMaterial = m;
             }
