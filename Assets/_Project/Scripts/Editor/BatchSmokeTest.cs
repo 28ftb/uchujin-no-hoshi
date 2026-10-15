@@ -112,7 +112,7 @@ namespace Uchujin.EditorTools
                     if (g != null && g.State == GameState.Title && !g.IsBusy)
                     {
                         if (At(0, 3f)) Shot("01_title");
-                        if (At(1, 4f))
+                        if (At(1, 7f))
                         {
                             Log("タイトル表示を確認。キャラクターメイクを開きます");
                             UIManager.Open(new Uchujin.Story.CharacterMakeWindow(null, Uchujin.Story.CharacterMakeWindow.Mode.NewGame, _ => { }, null));
@@ -122,7 +122,7 @@ namespace Uchujin.EditorTools
                     break;
                 case 1: // キャラクターメイク
                     if (At(0, 3f)) Shot("02_charmake");
-                    if (At(1, 4f))
+                    if (At(1, 6f))
                     {
                         UIManager.CloseAll();
                         Log("新しい星を開始します（プロローグあり）");
@@ -181,8 +181,14 @@ namespace Uchujin.EditorTools
                     var home = g.Service<IHousingService>();
                     if (At(0, 0f) && home != null) g.LocalPlayer.Position = home.PlayerHomeEntrance + new Vector3(0f, 0.3f, 0f);
                     if (At(1, 3f)) Shot("10_home");
-                    if (At(2, 3.5f)) { Log("睡眠前：日=" + g.Time?.Day); g.StartCoroutine(g.SleepRoutine(g.LocalPlayer, 6)); }
-                    if (Step >= 3 && !g.IsSleeping && Elapsed > 6f)
+                    // 屋内・鉱山（点光源の照明）も撮る
+                    if (At(2, 3.5f)) g.Areas.Transition(g.LocalPlayer, AreaIds.PlayerHouse);
+                    if (At(3, 6.5f)) Shot("10b_house_inside");
+                    if (At(4, 7f) && g.Areas.Get(AreaIds.MineFloor(1)) != null) g.Areas.Transition(g.LocalPlayer, AreaIds.MineFloor(1));
+                    if (At(5, 10f)) Shot("10c_mine");
+                    if (At(6, 10.5f)) g.Areas.Transition(g.LocalPlayer, AreaIds.PlayerHouse);
+                    if (At(7, 12f)) { Log("睡眠前：日=" + g.Time?.Day); g.StartCoroutine(g.SleepRoutine(g.LocalPlayer, 6)); }
+                    if (Step >= 8 && !g.IsSleeping && Elapsed > 15f)
                     {
                         Log("睡眠後：日=" + g.Time?.Day);
                         Stage = 7;
