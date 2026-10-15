@@ -14,7 +14,7 @@ namespace Uchujin.EditorTools
     /// 起動スモークテスト（検証用）。
     /// 再生 → タイトル → キャラメイク → 新しい星（プロローグ）→ 自由行動 → 住民と会話 → 商店 → タブレット → 睡眠 → セーブ → ロード を自動で行い、
     /// エラー・例外を集計して終了コードで返す。作ったテスト用セーブは最後に削除する。
-    /// - バッチモード：Unity.exe -batchmode -nographics -projectPath ... -executeMethod Uchujin.EditorTools.BatchSmokeTest.Run（-quit は付けない）
+    /// - バッチモード：Unity.exe -batchmode -projectPath ... -executeMethod Uchujin.EditorTools.BatchSmokeTest.Run（-quit は付けない。URP では -nographics を付けると RenderTexture が作れずエラーになる。通常は Tools/Unity-Check.ps1 -Mode Smoke）
     /// - 画面あり（-batchmode なし）で起動すると、各段階の Game ビューを Logs/Smoke/*.png に保存する（見た目の確認用）。
     /// </summary>
     [InitializeOnLoad]
