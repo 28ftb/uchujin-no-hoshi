@@ -107,6 +107,24 @@ namespace Uchujin.Core
         void ImportDictionary(string json, string fromPlayerName, bool asSeparateVolume);
     }
 
+    // ---------------- マネピ（伝言生物）の伝言板（Tablet モジュールが実装） ----------------
+
+    /// <summary>
+    /// 伝言生物マネピ（No.033）が声・表情・仕草を記憶して再現する仕組み（タブレット仕様 §4）。
+    /// 伝言板ID："plaza"（伝言広場）、"shop"（主人公の商店）、"home:&lt;playerId&gt;"（自宅）など。
+    /// 全会話を自動記録する存在ではない。住民が預けた伝言・商店での反応などを覚える。
+    /// </summary>
+    public interface IManepiService
+    {
+        void LeaveMessage(string boardId, UtteranceRecord record);
+        IReadOnlyList<UtteranceRecord> GetMessages(string boardId);
+        void ClearMessagesOlderThan(string boardId, int day);
+        /// <summary>マネピの見た目と操作（再生・音声カードとして保存）を配置する。</summary>
+        GameObject SpawnManepi(string boardId, Transform parent, Vector3 localPosition, string labelJa, string labelEn);
+        /// <summary>伝言の一覧・再生画面を開く。</summary>
+        void OpenBoard(string boardId, PlayerState player);
+    }
+
     // ---------------- 住民（Residents モジュール） ----------------
 
     /// <summary>かわいい宇宙人デザイン10系統（キャラクターデザイン案 v0.1：全案を活用）。</summary>

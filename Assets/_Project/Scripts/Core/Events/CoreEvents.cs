@@ -71,6 +71,8 @@ namespace Uchujin.Core
     public struct TabletOpenedEvent { public string AppId; }
     public struct TabletClosedEvent { }
     public struct DictionaryEntryEditedEvent { public string PlayerId; public string Surface; }
+    /// <summary>吹き出し・音声カード等で宇宙語の単語が選ばれた（タブレットが辞書の該当ページを開く）。</summary>
+    public struct DictionaryLookupRequestEvent { public string Surface; public string RecordId; }
 
     // ---- ネットワーク ----
     public struct PlayerJoinedEvent { public string PlayerId; public string DisplayName; }

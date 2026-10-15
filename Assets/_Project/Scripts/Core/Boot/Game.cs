@@ -400,7 +400,22 @@ namespace Uchujin.Core
             return list;
         }
 
-        private List<SaveEntry> CapturePlayerEntries(SaveScope scope, string playerId)
+        /// <summary>ローカルプレイヤーの持ち歩く資産（PlayerProfile スコープ）を取り出す。マルチの訪問時に使う。</summary>
+        public List<SaveEntry> CaptureLocalProfileEntries() => CapturePlayerEntries(SaveScope.PlayerProfile, LocalPlayerId);
+
+        /// <summary>PlayerProfile スコープを復元（自分のセーブから持ち物・見た目を読み込んで他人の星へ行く時など）。</summary>
+        public void RestoreLocalProfileEntries(List<SaveEntry> entries)
+        {
+            if (entries == null) return;
+            foreach (var s in systems)
+            {
+                if (s.SaveKey == null) continue;
+                var json = SaveSystem.FindEntry(entries, s.SaveKey);
+                if (json != null) RunSafe(s, "RestoreState(Profile)", () => s.RestoreState(SaveScope.PlayerProfile, LocalPlayerId, json));
+            }
+        }
+
+        public List<SaveEntry> CapturePlayerEntries(SaveScope scope, string playerId)
         {
             var list = new List<SaveEntry>();
             foreach (var s in systems)

@@ -118,6 +118,15 @@ namespace Uchujin.Core
             return JsonUtility.FromJson<PlayerSaveFile>(File.ReadAllText(path));
         }
 
+        /// <summary>プレイヤーファイルだけを書き換える（他人の星から戻った時に持ち物を保存する等）。</summary>
+        public void WritePlayer(string slotId, PlayerSaveFile player)
+        {
+            if (player == null) return;
+            var dir = SlotDir(slotId);
+            Directory.CreateDirectory(dir);
+            WriteAtomic(Path.Combine(dir, $"player_{player.playerId}.json"), JsonUtility.ToJson(player));
+        }
+
         public void DeleteSlot(string slotId)
         {
             var dir = SlotDir(slotId);
