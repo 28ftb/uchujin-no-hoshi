@@ -68,7 +68,7 @@ namespace Uchujin.Network
         /// </summary>
         public const bool ForwardGuestGestureToQuests = false;
         /// <summary>タイトル画面の右下に「友達の星へ行く」ボタンを出す（Story のタイトルに入口が無い場合の暫定）。</summary>
-        public const bool ShowTitleJoinButton = true;
+        public const bool ShowTitleJoinButton = false; // Story とコアのタイトル画面に入口があるため無効（統合時に変更）
 
         // ---- 符号化 ----
         /// <summary>これより大きいメッセージは GZip 圧縮する（バイト）。</summary>
