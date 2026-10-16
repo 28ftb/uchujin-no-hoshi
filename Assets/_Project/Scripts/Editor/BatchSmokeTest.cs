@@ -100,9 +100,29 @@ namespace Uchujin.EditorTools
             return true;
         }
 
+        /// <summary>村の外のマップのゲートに入り、移った先を記録して引いた斜めから撮る（3段：入る・記録・撮影）。</summary>
+        private static void TourGate(int step, float t, string gateName, string shot)
+        {
+            var g = Game.Instance;
+            if (At(step, t))
+            {
+                if (CameraRig.Instance != null) CameraRig.Instance.ApplyModeDefaults();
+                var gate = GameObject.Find(gateName);
+                if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
+                else Log("ゲートが見つからない：" + gateName);
+            }
+            if (At(step + 1, t + 2.5f))
+            {
+                var wild = GameObject.Find("WildCreatures");
+                Log(gateName + " に入った後のエリア：" + g.LocalPlayer.CurrentAreaId + "・野生の生き物：" + (wild != null ? wild.transform.childCount : -1) + "匹");
+                if (CameraRig.Instance != null) { CameraRig.Instance.pitch = 30f; CameraRig.Instance.distance = 50f; }
+            }
+            if (At(step + 2, t + 5f) && shot != null) Shot(shot);
+        }
+
         private static void Update()
         {
-            float limit = Stage == 2 ? 400f : 120f; // プロローグは操作区間の自動進行を待つので長め
+            float limit = Stage == 2 ? 400f : Stage == 3 ? 200f : 120f; // プロローグは操作区間の自動進行を待つので長め。自由行動は村の外のマップを回るので長め
             if (Elapsed > limit) { Finish("タイムアウト（段階 " + Stage + "）", 2); return; }
             if (!EditorApplication.isPlaying) return;
             var g = Game.Instance;
@@ -262,12 +282,27 @@ namespace Uchujin.EditorTools
                         else Log("滝が見つからない");
                     }
                     if (At(24, 54f)) Shot("04i_r3_falls");
-                    if (At(25, 54.5f))
+                    // 残りのマップ：滝の山 → 尾根道 → 星見の高原、村 → 川下りの湿原 → 浜と岬 → T6（海風の林か崖の小道。シードで1本）→ 苔の谷
+                    if (At(25, 54.5f) && CameraRig.Instance != null) CameraRig.Instance.ApplyModeDefaults();
+                    TourGate(26, 55f, "Gate_gate.r3.t5", "04j_t5");
+                    TourGate(29, 62f, "Gate_gate.t5.r5", "04k_r5");
+                    if (At(32, 69f))
                     {
                         if (CameraRig.Instance != null) CameraRig.Instance.ApplyModeDefaults();
                         if (g.LocalPlayer.CurrentAreaId != AreaIds.Overworld) g.Areas.Transition(g.LocalPlayer, AreaIds.Overworld);
                     }
-                    if (At(26, 56f)) Stage = 4;
+                    TourGate(33, 70.5f, "Gate_gate.r1.t2", "04l_t2");
+                    TourGate(36, 77.5f, "Gate_gate.t2.r4", "04m_r4");
+                    bool t6a = GameObject.Find("Gate_gate.r4.t6a") != null;
+                    TourGate(39, 84.5f, t6a ? "Gate_gate.r4.t6a" : "Gate_gate.r4.t6b", "04n_t6");
+                    TourGate(42, 91.5f, t6a ? "Gate_gate.t6a.r2" : "Gate_gate.t6b.r3", null);
+                    TourGate(45, 98.5f, t6a ? "Gate_gate.r2.t4" : "Gate_gate.r3.t4", "04o_t4");
+                    if (At(48, 105.5f))
+                    {
+                        if (CameraRig.Instance != null) CameraRig.Instance.ApplyModeDefaults();
+                        if (g.LocalPlayer.CurrentAreaId != AreaIds.Overworld) g.Areas.Transition(g.LocalPlayer, AreaIds.Overworld);
+                    }
+                    if (At(49, 107f)) Stage = 4;
                     break;
                 case 4: // 住民と会話
                 {

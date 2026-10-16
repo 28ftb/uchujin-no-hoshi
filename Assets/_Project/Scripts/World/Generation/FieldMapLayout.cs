@@ -48,6 +48,11 @@ namespace Uchujin.World
             else if (m.Id == StarSkeleton.WaterfallMountain) AreasWaterfallMountain(m, L);
             else if (m.Id == StarSkeleton.MarshRiver) AreasMarsh(m, L);
             else if (m.Id == StarSkeleton.BeachCape) AreasBeach(m, L);
+            else if (m.Id == StarSkeleton.MossValley) AreasSimple(m, L, AreaType.Forest, "苔の谷", "Moss valley", "谷の沢", "Valley brook");
+            else if (m.Id == StarSkeleton.Ridge) AreasSimple(m, L, AreaType.Hill, "尾根道", "Ridge path", null, null);
+            else if (m.Id == StarSkeleton.Highland) AreasHighland(m, L);
+            else if (m.Id == StarSkeleton.SeaWindWood) AreasSimple(m, L, AreaType.Coast, "海風の林", "Sea wind wood", null, null);
+            else if (m.Id == StarSkeleton.CliffPath) AreasSimple(m, L, AreaType.Coast, "崖の小道", "Cliff path", null, null);
             BuildSpots(m, L);
             BuildHabitats(m, L);
             return L;
@@ -148,6 +153,30 @@ namespace Uchujin.World
             if (ruins != null) Area(L, "area.t3.ruins", AreaType.Mountain, G(m, ruins.Local), 9f, "石積みの跡", "Old stonework");
             var shelf = m.GetPlace("t3.shelf");
             if (shelf != null) Area(L, "area.t3.shelf", AreaType.Mountain, G(m, shelf.Local), 10f, "滝の上の岩棚", "Rock shelf");
+        }
+
+        private static void AreasSimple(FieldMap m, WorldLayout L, AreaType type, string ja, string en, string streamJa, string streamEn)
+        {
+            var center = new Vector2(m.Width * 0.5f, m.Depth * 0.5f);
+            Area(L, "area." + m.Id + ".all", type, G(m, center), new Vector2(m.Width, m.Depth).magnitude * 0.5f + 12f, ja, en);
+            if (streamJa != null) foreach (var st in m.Streams) StreamAreas(m, L, st, streamJa, streamEn);
+            for (int p = 0; p < m.Ponds.Count; p++)
+                Area(L, $"area.{m.Id}.pond{p}", AreaType.Pond, G(m, m.Ponds[p].Center), m.Ponds[p].Radius + 5f, p == 0 ? "湧き水の窪地" : "静かな池", p == 0 ? "Spring hollow" : "Quiet pond", p > 0);
+            foreach (var pl in m.Places)
+                if (pl.Pocket || pl.Hidden) Area(L, "area." + pl.Id, type == AreaType.Hill ? AreaType.Mountain : type, G(m, pl.Local), 10f, pl.NameJa.Replace("（隠れた場所）", ""), pl.Id);
+        }
+
+        private static void AreasHighland(FieldMap m, WorldLayout L)
+        {
+            var center = new Vector2(m.Width * 0.5f, m.Depth * 0.5f);
+            // 住民は予定では来ない静かな場所（ユメボシ・ホシノコが出やすい）
+            Area(L, "area.r5.highland", AreaType.Hill, G(m, center), new Vector2(m.Width, m.Depth).magnitude * 0.5f + 12f, "星見の高原", "Stargazing highland", true);
+            for (int p = 0; p < m.Ponds.Count; p++)
+                Area(L, "area.r5.pond" + p, AreaType.Pond, G(m, m.Ponds[p].Center), m.Ponds[p].Radius + 5f, "高原の池", "Highland pond", true);
+            var grove = m.GetPlace("r5.grove");
+            if (grove != null) Area(L, "area.r5.grove", AreaType.Forest, G(m, grove.Local), 18f, "高原の木立", "Highland grove", true);
+            var rock = m.GetPlace("r5.rock");
+            if (rock != null) Area(L, "area.r5.rock", AreaType.Hill, G(m, rock.Local), 14f, "星見の岩", "Stargazing rock", true);
         }
 
         private static void AreasMarsh(FieldMap m, WorldLayout L)
@@ -356,6 +385,26 @@ namespace Uchujin.World
                         if (k == 1) s.tags.Add("weed");
                         s.tags.Add("foggy");
                     }
+                    else if (m.Id == StarSkeleton.MossValley)
+                    {
+                        // 苔の谷：湧き水の窪地（冷たい湧水）と静かな池
+                        s.tags.Add("forest");
+                        if (pi == 0) { s.tags.Add("spring"); s.tags.Add("cold"); }
+                        else { s.tags.Add("quiet"); s.tags.Add("deep"); }
+                    }
+                    else if (m.Id == StarSkeleton.SeaWindWood)
+                    {
+                        // 浜の池（砂泥底・浅い）
+                        s.tags.Add("sandmud");
+                        if (k == 1) s.tags.Add("weed");
+                    }
+                    else if (m.Id == StarSkeleton.Highland)
+                    {
+                        // 星見の高原の池（静かな高台の池）
+                        s.tags.Add("highland");
+                        s.tags.Add("quiet");
+                        if (k == 2) s.tags.Add("deep");
+                    }
                     else if (m.Id == StarSkeleton.WaterfallMountain)
                     {
                         // 山の泉（冷たい湧水。§8.3 R3 の湧水の淵）
@@ -381,6 +430,7 @@ namespace Uchujin.World
             }
             if (m.Lake != null) LakeSpots(m, L);
             foreach (var w in m.Water) if (w == FieldWater.Sea) { SeaSpots(m, L); break; }
+            if (m.Id == StarSkeleton.CliffPath) CoveSpots(m, L);
             // 海の桟橋（湖の桟橋は LakeSpots の中）
             if (m.Lake == null)
                 foreach (var stc in m.Structures)
@@ -396,6 +446,29 @@ namespace Uchujin.World
                     ps.tags.Add("bottom");
                     ps.tags.Add("deep");
                 }
+        }
+
+        /// <summary>崖の小道の入り江：崖の根もとは立てないので、入り江の浜・岩棚・岩場から海へ投げる釣り場。</summary>
+        private static void CoveSpots(FieldMap m, WorldLayout L)
+        {
+            string wid = "water." + m.Id + ".sea";
+            string[] ids = { "t6b.cove", "t6b.ledge", "t6b.rocks" };
+            foreach (var pid in ids)
+            {
+                var pl = m.GetPlace(pid);
+                if (pl == null) continue;
+                Vector2 water = pl.Local;
+                bool found = false;
+                for (float z = pl.Local.y - 4f; z > 2f; z -= 1f)
+                    if (m.WaterAt(pl.Local.x, z) == FieldWater.Sea && m.WaterDepth(pl.Local.x, z) > 0.8f) { water = new Vector2(pl.Local.x, z - 2f); found = true; break; }
+                if (!found) continue;
+                var s = Spot(L, $"spot.{m.Id}.{pid}", wid, WaterType.Sea, G(m, pl.Local), W(m, water, 0f));
+                s.tags.Add("sea");
+                s.tags.Add(pid == "t6b.cove" ? "beach" : "rocky");
+                s.tags.Add("bottom");
+                s.tags.Add(m.WaterDepth(water.x, water.y) < 1.2f ? "shallow" : "mid");
+                if (pid == "t6b.ledge") s.tags.Add("deep");
+            }
         }
 
         /// <summary>小川の点のまわりの水面の勾配（上流と下流の4点ずつで見る）。</summary>

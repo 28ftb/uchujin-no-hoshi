@@ -47,6 +47,11 @@ namespace Uchujin.World
                 case StarSkeleton.WaterfallMountain: return new WaterfallMountainGen();
                 case StarSkeleton.MarshRiver: return new MarshRiverGen();
                 case StarSkeleton.BeachCape: return new BeachCapeGen();
+                case StarSkeleton.MossValley: return new MossValleyGen();
+                case StarSkeleton.Ridge: return new RidgeGen();
+                case StarSkeleton.Highland: return new HighlandGen();
+                case StarSkeleton.SeaWindWood: return new SeaWindWoodGen();
+                case StarSkeleton.CliffPath: return new CliffPathGen();
                 default: return null;
             }
         }
@@ -264,7 +269,8 @@ namespace Uchujin.World
         /// その手間は越える高さに比例して高くつく（1m を坂にするのは、およそ 2/comfort m の遠回りと同じ）ので、近くに自然な坂があればそちらを回り、
         /// 無ければ段差に坂を作って越える。extraCost は1mあたりの追加の重み（水・縁など）。見つかった経路は 8m おきに間引いて、なめらかな曲線にして返す。
         /// </summary>
-        protected List<Vector2> FindPath(Vector2 from, Vector2 to, Func<int, float> extraCost, float comfort = 0.08f, float inset = 3f)
+        /// <param name="walkOnly">true なら、歩いて登れない急な所（隣と 1.6m 以上の差）は通らない（脇道用。岩壁を削って登らず、切れ目を回る）。</param>
+        protected List<Vector2> FindPath(Vector2 from, Vector2 to, Func<int, float> extraCost, float comfort = 0.08f, float inset = 3f, bool walkOnly = false)
         {
             float rampCost = 2f / Mathf.Max(0.02f, comfort);
             int n = N;
@@ -299,6 +305,7 @@ namespace Uchujin.World
                     if (!M.InsidePlayable(l, inset) && Vector2.Distance(l, from) > 9f && Vector2.Distance(l, target) > 9f) continue;
                     float dist = k < 4 ? FieldMap.Step : FieldMap.Step * 1.41421f;
                     float rise = Mathf.Abs(M.H[j] - M.H[i]);
+                    if (walkOnly && rise > 1.6f * dist / FieldMap.Step) continue;
                     float grade = Mathf.Min(rise / dist, comfort);
                     float over = Mathf.Max(0f, rise - comfort * dist);
                     float ng = g[i] + dist * (1f + 6f * grade * grade + extraCost(j)) + over * rampCost;
@@ -1683,6 +1690,9 @@ namespace Uchujin.World
         private List<Vector2> outletPts;
         private List<Vector2> inletPts;
         private List<Vector2> valleyPts;
+        private readonly List<(string o, Vector2 p, Vector2 inward, float h)> sideGates = new List<(string, Vector2, Vector2, float)>();
+        private readonly List<float> branchEnds = new List<float>();
+        private readonly List<float[]> branchT = new List<float[]>();
         private Vector2 gazeboShore;
         private Vector2 quietShore;
 
@@ -1818,6 +1828,43 @@ namespace Uchujin.World
             road.Add(Vector2.Lerp(lake.SpitBase, lake.SpitTip, 0.55f));
             road.Add(Vector2.Lerp(lake.SpitBase, lake.SpitTip, 0.88f));
             M.Road.AddRange(CatmullRom(road, 3f));
+            // 苔の谷（と海風の林）へのゲート：骨格の向きの辺の上で、地面の高さがゲートの高さに近い所。本道から枝道
+            var others = new List<string> { StarSkeleton.MossValley };
+            if (sk.T6 == StarSkeleton.SeaWindWood) others.Add(StarSkeleton.SeaWindWood);
+            foreach (var o in others)
+            {
+                int edge = EdgeFor(StarSkeleton.FlowerPath, o);
+                if (edge == 0) edge = 2;
+                float gh = GateHeight(o);
+                float bestA = 0.5f, bestS = float.MaxValue;
+                for (float a = 0.12f; a <= 0.88f; a += 0.01f)
+                {
+                    EdgePoint(edge, a, out var p, out var inw);
+                    var q = p + inw * 12f;
+                    float s = Mathf.Abs(M.SampleTerrain(q.x, q.y) - gh);
+                    if (Vector2.Distance(p, new Vector2(gate.x, 0f)) < 60f) s += 100f;
+                    foreach (var sg0 in sideGates) if (Vector2.Distance(sg0.p, p) < 60f) s += 100f;
+                    if (lake.K(q) < 1.6f) s += 100f;
+                    if (s < bestS) { bestS = s; bestA = a; }
+                }
+                EdgePoint(edge, bestA, out var gp, out var gin);
+                FlattenDisc(gp, 10f, 10f, gh);
+                sideGates.Add((o, gp, gin, gh));
+            }
+            foreach (var sg0 in sideGates)
+            {
+                Vector2 near = M.Road[0];
+                float bd = float.MaxValue;
+                foreach (var q in M.Road)
+                {
+                    if (lake.K(q) < 1.15f || lake.InSpit(q)) continue;
+                    float d = Vector2.Distance(q, sg0.p);
+                    if (d < bd) { bd = d; near = q; }
+                }
+                var br = FindPath(near, sg0.p, j => lake.K(LocalOf(j)) < 1.05f ? 50f : 0f, 0.12f);
+                if (br == null) M.Notes.Add($"{sg0.o} への枝道が見つからない");
+                else { M.Branches.Add(br); branchEnds.Add(sg0.h); }
+            }
             // 流れ出しの小川（湖の水面から下る）と、流れ込みの小川（湖の水面より下がらない）。水面は道を均す前の地形で決める
             var outlet = CarveStream("stream.r2.outlet", outletPts, r.Range(1.4f, 1.8f), 0.45f, surface - 0.05f);
             var inlet = CarveStream("stream.r2.inlet", inletPts, r.Range(1.1f, 1.4f), 0.4f, float.NaN, surface);
@@ -1847,8 +1894,18 @@ namespace Uchujin.World
             // 浅瀬で道と小川の高さを合わせる
             SettleFords(outlet, outCross, roadT, rcum, pinned);
             ClampGrade(roadT, rcum, 0.08f, pinned);
+            // 枝道の高さ（本道の分かれ目からゲートの高さへ）
+            for (int b = 0; b < M.Branches.Count; b++)
+            {
+                var br = M.Branches[b];
+                float along = 0f, bd = float.MaxValue;
+                for (int k = 0; k < M.Road.Count; k++) { float d = Vector2.Distance(M.Road[k], br[0]); if (d < bd) { bd = d; along = rcum[k]; } }
+                branchT.Add(PlanRoadHeights(br, ValueAlong(rcum, roadT, along), branchEnds[b], 0.12f, M.Streams, r));
+            }
             ApplyStream(outlet);
             ApplyStream(inlet);
+            SettleStones();
+            for (int b = 0; b < M.Branches.Count; b++) FlattenAlong(M.Branches[b], branchT[b], WorldTuning.FieldRoadHalfWidth, 3.5f);
             FlattenAlong(M.Road, roadT, WorldTuning.FieldRoadHalfWidth, 3.5f);
 
             // 湖の水面（岬の陸は水面より上なので水にならない）
@@ -1892,8 +1949,14 @@ namespace Uchujin.World
             if (M.Ponds.Count > 0) AddTrail(M.Ponds[0].Center + (M.Road[M.Road.Count / 3] - M.Ponds[0].Center).normalized * (M.Ponds[0].Radius + 2.5f));
 
             // 脇道・東屋で本道の脇を触ったので、本道の上だけもう一度均す
+            for (int b = 0; b < M.Branches.Count; b++) FlattenAlong(M.Branches[b], branchT[b], WorldTuning.FieldRoadHalfWidth, 1.2f);
             FlattenAlong(M.Road, roadT, WorldTuning.FieldRoadHalfWidth, 1.2f);
 
+            foreach (var sg0 in sideGates)
+            {
+                AddGate(sg0.o, sg0.p, sg0.inward);
+                AddStructure(FieldStructureKind.Signpost, sg0.p + sg0.inward * 14f + new Vector2(-sg0.inward.y, sg0.inward.x) * 4.2f, 0f, 1f, sg0.o);
+            }
             AddGate(StarSkeleton.FlowerPath, new Vector2(gate.x, 0f), Vector2.up);
             AddStructure(FieldStructureKind.Signpost, new Vector2(gate.x - sgn * 5f, 13f), 0f, 1f, StarSkeleton.FlowerPath);
             SettleHeights();
@@ -2104,7 +2167,7 @@ namespace Uchujin.World
             }
             if (steep < n * 0.008f) M.Notes.Add($"台地の崖が少ない（{100f * steep / Mathf.Max(1, n):0.0}%）");
             // §5：22〜55m（湖の盆地のまわりに森の台地、縁に崖）
-            RequireRelief(24f, 1.5f);
+            RequireRelief(22f, 1.5f);
         }
     }
 }

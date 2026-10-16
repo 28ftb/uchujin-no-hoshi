@@ -112,20 +112,21 @@ namespace Uchujin.World
             mtn.Built = true;
             var sea = s.Add(BeachCape, "浜と岬", "Beach and Cape", SkeletonMapKind.Region, new Vector2(360f, 220f), r.Range(0, 3), Dir(s.SeaBearing) * 1f);
             sea.Built = true;
-            s.Add(Highland, "星見の高原", "Stargazing Highland", SkeletonMapKind.Region, new Vector2(240f, 240f), r.Range(0, 3), mtn.StarPos + Dir(s.HighlandBearing) * 0.9f);
+            s.Add(Highland, "星見の高原", "Stargazing Highland", SkeletonMapKind.Region, new Vector2(240f, 240f), r.Range(0, 3), mtn.StarPos + Dir(s.HighlandBearing) * 0.9f).Built = true;
 
             var t1 = s.AddRoute(FlowerPath, "花の野道", "Flower Path", new Vector2(240f, 120f), r, Village, LakeForest);
             t1.Built = true;
             s.AddRoute(MarshRiver, "川下りの湿原", "Downriver Marsh", new Vector2(260f, 130f), r, Village, BeachCape).Built = true;
             s.AddRoute(StreamSlope, "渓流の坂道", "Stream Slope", new Vector2(260f, 110f), r, Village, WaterfallMountain).Built = true;
-            s.AddRoute(MossValley, "苔の谷", "Moss Valley", new Vector2(240f, 100f), r, LakeForest, WaterfallMountain);
-            s.AddRoute(Ridge, "尾根道", "Ridge Path", new Vector2(280f, 90f), r, WaterfallMountain, Highland);
-            if (s.T6 == SeaWindWood) s.AddRoute(SeaWindWood, "海風の林", "Sea Wind Wood", new Vector2(280f, 110f), r, BeachCape, LakeForest);
-            else s.AddRoute(CliffPath, "崖の小道", "Cliff Path", new Vector2(280f, 110f), r, BeachCape, WaterfallMountain);
+            s.AddRoute(MossValley, "苔の谷", "Moss Valley", new Vector2(240f, 100f), r, LakeForest, WaterfallMountain).Built = true;
+            s.AddRoute(Ridge, "尾根道", "Ridge Path", new Vector2(280f, 90f), r, WaterfallMountain, Highland).Built = true;
+            if (s.T6 == SeaWindWood) s.AddRoute(SeaWindWood, "海風の林", "Sea Wind Wood", new Vector2(280f, 110f), r, BeachCape, LakeForest).Built = true;
+            else s.AddRoute(CliffPath, "崖の小道", "Cliff Path", new Vector2(280f, 110f), r, BeachCape, WaterfallMountain).Built = true;
 
             // ゲートの高さ（§5 の標高の範囲から。村側は村の地形が決まってから入れる）
             s.SetGateHeight(FlowerPath, LakeForest, LakeSurface - r.Range(1.6f, 2.4f));
-            s.SetGateHeight(MossValley, LakeForest, r.Range(31f, 35f));
+            // 湖の森の台地（39〜58m）の縁にゲートを置くので、苔の谷・海風の林の湖の森側は台地の高さ
+            s.SetGateHeight(MossValley, LakeForest, r.Range(40f, 46f));
             s.SetGateHeight(MossValley, WaterfallMountain, r.Range(52f, 58f));
             // 渓流の坂道は村（高さ10m前後）から登る：本道を 11% で走って45秒以内に収めるため、滝の山の入口は 40〜46m（§5 の 50〜55m から下げた）
             s.SetGateHeight(StreamSlope, WaterfallMountain, r.Range(40f, 46f));
@@ -135,7 +136,7 @@ namespace Uchujin.World
             if (s.T6 == SeaWindWood)
             {
                 s.SetGateHeight(SeaWindWood, BeachCape, r.Range(4f, 8f));
-                s.SetGateHeight(SeaWindWood, LakeForest, r.Range(27f, 30f));
+                s.SetGateHeight(SeaWindWood, LakeForest, r.Range(36f, 42f));
             }
             else
             {

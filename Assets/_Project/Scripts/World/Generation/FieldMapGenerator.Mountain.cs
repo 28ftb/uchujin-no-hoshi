@@ -325,7 +325,7 @@ namespace Uchujin.World
             float bd = float.MaxValue;
             foreach (var q in M.Road) { float d = Vector2.Distance(q, target); if (d < bd) { bd = d; near = q; } }
             foreach (var b in M.Branches) foreach (var q in b) { float d = Vector2.Distance(q, target); if (d < bd) { bd = d; near = q; } }
-            var pts = FindPath(near, target, j => 0f, 0.2f);
+            var pts = (FindPath(near, target, j => 0f, 0.2f, 3f, true) ?? FindPath(near, target, j => 0f, 0.2f));
             if (pts == null) return;
             // 脇道は両端を地面の高さに固定し、間をならす（急でもよい。歩いて登れる 45% まで）
             var t = RoadTargets(pts, 0.45f, M.SampleTerrain(near.x, near.y), M.SampleTerrain(target.x, target.y), 6f);

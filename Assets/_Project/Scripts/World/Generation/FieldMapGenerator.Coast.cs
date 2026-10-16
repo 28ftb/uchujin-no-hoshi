@@ -217,7 +217,7 @@ namespace Uchujin.World
             foreach (var q in M.Road) { float d = Vector2.Distance(q, target); if (d < bd) { bd = d; near = q; } }
             var dir = (target - near).normalized;
             var end = target - dir * stopShort;
-            var pts = FindPath(near, end, j => M.WaterY[j] > M.H[j] + 0.3f ? 20f : 0f, 0.2f);
+            var pts = FindPath(near, end, j => M.WaterY[j] > M.H[j] + 0.3f ? 20f : 0f, 0.2f, 3f, true) ?? FindPath(near, end, j => M.WaterY[j] > M.H[j] + 0.3f ? 20f : 0f, 0.2f);
             if (pts == null) return;
             var t = RoadTargets(pts, 0.45f, M.SampleTerrain(near.x, near.y), M.SampleTerrain(end.x, end.y), 6f);
             FlattenAlong(pts, t, WorldTuning.FieldTrailHalfWidth, 1.6f);
@@ -508,7 +508,7 @@ namespace Uchujin.World
             Vector2 near = M.Road[0];
             float bd = float.MaxValue;
             foreach (var q in M.Road) { float d = Vector2.Distance(q, target); if (d < bd) { bd = d; near = q; } }
-            var pts = FindPath(near, target, j => 0f, 0.2f);
+            var pts = (FindPath(near, target, j => 0f, 0.2f, 3f, true) ?? FindPath(near, target, j => 0f, 0.2f));
             if (pts == null) return;
             var t = RoadTargets(pts, 0.45f, M.SampleTerrain(near.x, near.y), M.SampleTerrain(target.x, target.y), 6f);
             for (int k = 0; k < t.Length; k++) t[k] = Mathf.Max(t[k], 0.3f);
