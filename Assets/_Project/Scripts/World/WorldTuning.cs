@@ -51,7 +51,7 @@ namespace Uchujin.World
         /// <summary>版3の村の道の坂の上限（段丘の崖をまたぐ所は、道のつながり全体でこれ以下にならす）。</summary>
         public const float VillageRoadGrade = 0.1f;
         /// <summary>広場から村のゲートまでの道のりの上限（m）。</summary>
-        public const float MaxPathPlazaToGate = 300f;
+        public const float MaxPathPlazaToGate = 380f;
 
         // ---- 生成バージョン2（マップ設計 v0.2 §2）【仮数値】 ----
         /// <summary>必ず作る滝の最低の落差（m）。</summary>

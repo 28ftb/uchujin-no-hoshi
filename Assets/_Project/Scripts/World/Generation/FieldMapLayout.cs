@@ -46,6 +46,8 @@ namespace Uchujin.World
             else if (m.Id == StarSkeleton.LakeForest) AreasLakeForest(m, L);
             else if (m.Id == StarSkeleton.StreamSlope) AreasStreamSlope(m, L);
             else if (m.Id == StarSkeleton.WaterfallMountain) AreasWaterfallMountain(m, L);
+            else if (m.Id == StarSkeleton.MarshRiver) AreasMarsh(m, L);
+            else if (m.Id == StarSkeleton.BeachCape) AreasBeach(m, L);
             BuildSpots(m, L);
             BuildHabitats(m, L);
             return L;
@@ -94,6 +96,14 @@ namespace Uchujin.World
                 wb.points.Add(W(m, lk.Center, lk.Surface));
                 L.Waters.Add(wb);
             }
+            bool sea = false;
+            foreach (var w in m.Water) if (w == FieldWater.Sea) { sea = true; break; }
+            if (sea)
+            {
+                var wb = new WaterBody { id = "water." + m.Id + ".sea", type = WaterType.Sea, radius = 9999f, surfaceHeight = 0f };
+                wb.points.Add(W(m, new Vector2(m.Width * 0.5f, -FieldMap.Margin), 0f));
+                L.Waters.Add(wb);
+            }
         }
 
         // =================================================================
@@ -138,6 +148,86 @@ namespace Uchujin.World
             if (ruins != null) Area(L, "area.t3.ruins", AreaType.Mountain, G(m, ruins.Local), 9f, "石積みの跡", "Old stonework");
             var shelf = m.GetPlace("t3.shelf");
             if (shelf != null) Area(L, "area.t3.shelf", AreaType.Mountain, G(m, shelf.Local), 10f, "滝の上の岩棚", "Rock shelf");
+        }
+
+        private static void AreasMarsh(FieldMap m, WorldLayout L)
+        {
+            var center = new Vector2(m.Width * 0.5f, m.Depth * 0.5f);
+            Area(L, "area.t2.marsh", AreaType.Riverside, G(m, center), new Vector2(m.Width, m.Depth).magnitude * 0.5f + 12f, "川下りの湿原", "Downriver marsh");
+            foreach (var st in m.Streams) StreamAreas(m, L, st, "下流の川", "Lower river");
+            for (int p = 0; p < m.Ponds.Count; p++)
+                Area(L, "area.t2.pond" + p, AreaType.Pond, G(m, m.Ponds[p].Center), m.Ponds[p].Radius + 6f, "湿原の池", "Marsh pond");
+            var bluff = m.GetPlace("t2.bluff");
+            if (bluff != null) Area(L, "area.t2.bluff", AreaType.Meadow, G(m, bluff.Local), 26f, "崖の上の草地", "Bluff meadow");
+        }
+
+        private static void AreasBeach(FieldMap m, WorldLayout L)
+        {
+            var center = new Vector2(m.Width * 0.5f, m.Depth * 0.5f);
+            Area(L, "area.r4.coast", AreaType.Coast, G(m, center), new Vector2(m.Width, m.Depth).magnitude * 0.5f + 12f, "浜と岬", "Beach and cape");
+            Area(L, "area.r4.inland", AreaType.Meadow, G(m, new Vector2(m.Width * 0.5f, m.Depth * 0.85f)), m.Width * 0.38f, "浜の後ろの丘", "Dunes and hills");
+            foreach (var st in m.Streams) StreamAreas(m, L, st, "河口の川", "Estuary river");
+            foreach (var p in m.Places)
+            {
+                if (p.Id == "r4.cape") Area(L, "area.r4.cape", AreaType.Hill, G(m, p.Local), 24f, "岬", "Cape");
+                else if (p.Id == "r4.estuary") Area(L, "area.r4.estuary", AreaType.Riverside, G(m, p.Local), 16f, "河口", "Estuary");
+                else if (p.Id == "r4.pools") Area(L, "area.r4.pools", AreaType.Coast, G(m, p.Local), 14f, "岩場の潮だまり", "Rock pools");
+            }
+        }
+
+        /// <summary>海：岸沿いに 18m おき。砂底・岩場・海底近く・砂泥底（河口のそば）・河口・沖（岬の先と桟橋の先）。</summary>
+        private static void SeaSpots(FieldMap m, WorldLayout L)
+        {
+            string wid = "water." + m.Id + ".sea";
+            int n = 0;
+            for (float x = 10f; x < m.Width - 10f; x += 18f)
+            {
+                // 岸の立ち位置：南（海）から北へ、初めて水でなくなる所
+                Vector2 stand = Vector2.zero;
+                bool ok = false;
+                for (float z = 2f; z < m.Depth * 0.7f; z += 1f)
+                {
+                    if (m.WaterAt(x, z) == FieldWater.Sea && m.WaterDepth(x, z) > 0.05f) continue;
+                    stand = new Vector2(x, z);
+                    ok = z > 2f;
+                    break;
+                }
+                if (!ok || m.Slope(stand.x, stand.y) > 40f) continue;
+                var water = stand + Vector2.down * 9f;
+                if (m.WaterAt(water.x, water.y) != FieldWater.Sea) continue;
+                var s = Spot(L, $"spot.{m.Id}.sea.{n}", wid, WaterType.Sea, G(m, stand), W(m, water, 0f));
+                s.tags.Add("sea");
+                var paint = m.PaintAt(stand.x, stand.y + 2f);
+                bool rocky = paint == FieldPaint.Rock || m.Slope(stand.x, stand.y + 3f) > 20f;
+                s.tags.Add(rocky ? "rocky" : "beach");
+                if (n % 2 == 0) s.tags.Add("bottom");
+                float depth = m.WaterDepth(water.x, water.y);
+                s.tags.Add(depth < 1.2f ? "shallow" : "mid");
+                foreach (var st in m.Streams)
+                    if (st.Points.Count > 0 && Vector2.Distance(st.Points[st.Points.Count - 1], stand) < 40f)
+                    {
+                        s.tags.Add("estuary");
+                        s.tags.Add("sandmud");
+                    }
+                n++;
+            }
+            // 岬の先（沖・岩場）
+            var cape = m.GetPlace("r4.cape");
+            if (cape != null)
+            {
+                var tip = cape.Local;
+                for (float z = cape.Local.y; z > 2f; z -= 1f)
+                {
+                    if (m.WaterAt(cape.Local.x, z) == FieldWater.Sea) break;
+                    tip = new Vector2(cape.Local.x, z);
+                }
+                var s = Spot(L, $"spot.{m.Id}.sea.capetip", wid, WaterType.Sea, G(m, tip), W(m, tip + Vector2.down * 16f, 0f));
+                s.tags.Add("sea");
+                s.tags.Add("offshore");
+                s.tags.Add("rocky");
+                s.tags.Add("deep");
+                s.tags.Add("bottom");
+            }
         }
 
         private static void AreasWaterfallMountain(FieldMap m, WorldLayout L)
@@ -258,6 +348,14 @@ namespace Uchujin.World
                         s.tags.Add("meadow");
                         if (k == 1) s.tags.Add("weed");
                     }
+                    else if (m.Id == StarSkeleton.MarshRiver)
+                    {
+                        // 湿原の池（泥・濁り・水草）
+                        s.tags.Add("mud");
+                        if (k == 0) s.tags.Add("turbid");
+                        if (k == 1) s.tags.Add("weed");
+                        s.tags.Add("foggy");
+                    }
                     else if (m.Id == StarSkeleton.WaterfallMountain)
                     {
                         // 山の泉（冷たい湧水。§8.3 R3 の湧水の淵）
@@ -282,6 +380,22 @@ namespace Uchujin.World
                 }
             }
             if (m.Lake != null) LakeSpots(m, L);
+            foreach (var w in m.Water) if (w == FieldWater.Sea) { SeaSpots(m, L); break; }
+            // 海の桟橋（湖の桟橋は LakeSpots の中）
+            if (m.Lake == null)
+                foreach (var stc in m.Structures)
+                {
+                    if (stc.Kind != FieldStructureKind.Pier) continue;
+                    float yawR = stc.Yaw * Mathf.Deg2Rad;
+                    var fwd = new Vector2(Mathf.Sin(yawR), Mathf.Cos(yawR));
+                    var end = stc.Local + fwd * (10.5f * Mathf.Max(0.5f, stc.Size));
+                    var ps = Spot(L, $"spot.{m.Id}.sea.pier", "water." + m.Id + ".sea", WaterType.Sea, W(m, end, stc.Y + 0.1f), W(m, end + fwd * 8f, 0f));
+                    ps.tags.Add("sea");
+                    ps.tags.Add("pier");
+                    ps.tags.Add("offshore");
+                    ps.tags.Add("bottom");
+                    ps.tags.Add("deep");
+                }
         }
 
         /// <summary>小川の点のまわりの水面の勾配（上流と下流の4点ずつで見る）。</summary>
@@ -347,7 +461,7 @@ namespace Uchujin.World
                 if (stc.Kind != FieldStructureKind.Pier) continue;
                 float yawR = stc.Yaw * Mathf.Deg2Rad;
                 var fwd = new Vector2(Mathf.Sin(yawR), Mathf.Cos(yawR));
-                var end = stc.Local + fwd * 10.5f;
+                var end = stc.Local + fwd * (10.5f * Mathf.Max(0.5f, stc.Size));
                 var ps = Spot(L, $"spot.{m.Id}.lake.pier", wid, WaterType.Lake, W(m, end, stc.Y + 0.1f), W(m, end + fwd * 6f, lk.Surface));
                 LakeTags(m, ps, lk, end + fwd * 6f, LakeInfo.Angle(end - lk.Center), end);
                 ps.tags.Add("pier");

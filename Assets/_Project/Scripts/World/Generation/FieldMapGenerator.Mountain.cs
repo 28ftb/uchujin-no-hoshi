@@ -133,24 +133,20 @@ namespace Uchujin.World
             view = new Vector2(Mathf.Clamp(view.x, 20f, W - 20f), Mathf.Clamp(view.y, 20f, D - 20f));
             Nearest(riverPts, 10f, out var wet, out _);
             System.Func<int, float> cost = j => wet[j] == float.MaxValue ? 0f : wet[j] < 4f ? 10f : (10f - wet[j]) * 0.15f;
-            var leg1 = FindPath(gates[StarSkeleton.StreamSlope].p, view, cost, M.RoadGrade);
-            var leg2 = FindPath(view, gates[StarSkeleton.Ridge].p, cost, M.RoadGrade);
-            if (leg1 == null || leg2 == null) M.Notes.Add("本道の経路が見つからない");
-            else
+            // 本道はゲートからゲートへ（行って戻る道を作らない）。滝つぼのそば・ほかのゲートへは枝道
+            var main = FindPath(gates[StarSkeleton.StreamSlope].p, gates[StarSkeleton.Ridge].p, cost, M.RoadGrade);
+            if (main == null) { M.Notes.Add("本道の経路が見つからない"); main = new List<Vector2> { gates[StarSkeleton.StreamSlope].p, gates[StarSkeleton.Ridge].p }; }
+            M.Road.AddRange(main);
+            var branchTargets = new List<Vector2> { view };
+            foreach (var o in others) if (o != StarSkeleton.Ridge) branchTargets.Add(gates[o].p);
+            foreach (var gp in branchTargets)
             {
-                M.Road.AddRange(leg1);
-                for (int k = 1; k < leg2.Count; k++) M.Road.Add(leg2[k]);
-            }
-            if (M.Road.Count < 2) M.Road.AddRange(new[] { gates[StarSkeleton.StreamSlope].p, gates[StarSkeleton.Ridge].p });
-            foreach (var o in others)
-            {
-                if (o == StarSkeleton.Ridge) continue;
-                var gp = gates[o].p;
                 Vector2 near = M.Road[0];
                 float bd = float.MaxValue;
                 foreach (var q in M.Road) { float d = Vector2.Distance(q, gp); if (d < bd) { bd = d; near = q; } }
+                if (bd < 6f) continue;
                 var br = FindPath(near, gp, cost, M.RoadGrade);
-                if (br == null) M.Notes.Add($"{o} への枝道が見つからない");
+                if (br == null) M.Notes.Add("枝道が見つからない");
                 else M.Branches.Add(br);
             }
 

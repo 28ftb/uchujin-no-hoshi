@@ -8,7 +8,7 @@ namespace Uchujin.World
     public enum FieldPaint : byte { Grass = 0, Meadow, Flowers, Forest, WetForest, Road, Trail, Sand, Mud, Rock }
 
     /// <summary>地域・道中マップの水の種類。</summary>
-    public enum FieldWater : byte { None = 0, Stream = 1, Pond = 2, Lake = 3 }
+    public enum FieldWater : byte { None = 0, Stream = 1, Pond = 2, Lake = 3, Sea = 4 }
 
     /// <summary>マップの中の小川（点の列と、点ごとの水面・半径・深さ）。座標はマップのローカル（m）。</summary>
     public sealed class FieldStream

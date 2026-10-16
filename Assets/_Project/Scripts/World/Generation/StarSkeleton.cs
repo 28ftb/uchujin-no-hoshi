@@ -111,11 +111,12 @@ namespace Uchujin.World
             var mtn = s.Add(WaterfallMountain, "滝の山", "Waterfall Mountain", SkeletonMapKind.Region, new Vector2(300f, 340f), r.Range(0, 3), Dir(s.MountainBearing) * 1.05f);
             mtn.Built = true;
             var sea = s.Add(BeachCape, "浜と岬", "Beach and Cape", SkeletonMapKind.Region, new Vector2(360f, 220f), r.Range(0, 3), Dir(s.SeaBearing) * 1f);
+            sea.Built = true;
             s.Add(Highland, "星見の高原", "Stargazing Highland", SkeletonMapKind.Region, new Vector2(240f, 240f), r.Range(0, 3), mtn.StarPos + Dir(s.HighlandBearing) * 0.9f);
 
             var t1 = s.AddRoute(FlowerPath, "花の野道", "Flower Path", new Vector2(240f, 120f), r, Village, LakeForest);
             t1.Built = true;
-            s.AddRoute(MarshRiver, "川下りの湿原", "Downriver Marsh", new Vector2(260f, 130f), r, Village, BeachCape);
+            s.AddRoute(MarshRiver, "川下りの湿原", "Downriver Marsh", new Vector2(260f, 130f), r, Village, BeachCape).Built = true;
             s.AddRoute(StreamSlope, "渓流の坂道", "Stream Slope", new Vector2(260f, 110f), r, Village, WaterfallMountain).Built = true;
             s.AddRoute(MossValley, "苔の谷", "Moss Valley", new Vector2(240f, 100f), r, LakeForest, WaterfallMountain);
             s.AddRoute(Ridge, "尾根道", "Ridge Path", new Vector2(280f, 90f), r, WaterfallMountain, Highland);

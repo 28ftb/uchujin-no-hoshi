@@ -93,7 +93,7 @@ namespace Uchujin.World
                 switch (s.Kind)
                 {
                     case FieldStructureKind.Gazebo: Gazebo(structures, pos, s.Yaw, m.Palette); break;
-                    case FieldStructureKind.Pier: Pier(structures, pos, s.Yaw); break;
+                    case FieldStructureKind.Pier: Pier(structures, pos, s.Yaw, s.Size); break;
                     case FieldStructureKind.SteppingStone:
                     {
                         var st = PrimitiveBuilder.Create(PrimitiveType.Cylinder, structures, pos, new Vector3(0.95f, 0.14f, 0.85f), Color.Lerp(m.Palette.Rock, Color.white, 0.12f), "SteppingStone");
@@ -271,6 +271,15 @@ namespace Uchujin.World
             BuildWaterKind(m, wr, FieldWater.Stream, P.River, "Stream");
             BuildWaterKind(m, wr, FieldWater.Pond, P.Pond, "Pond");
             BuildWaterKind(m, wr, FieldWater.Lake, Color.Lerp(P.Pond, P.DeepSea, 0.35f), "Lake");
+            BuildWaterKind(m, wr, FieldWater.Sea, P.Sea, "Sea");
+            // 海のあるマップは、マップの外まで海を続ける（地形より下は地形が隠す）
+            bool sea = false;
+            foreach (var w in m.Water) if (w == FieldWater.Sea) { sea = true; break; }
+            if (sea)
+            {
+                var plane = PrimitiveBuilder.Create(PrimitiveType.Cube, wr, m.Origin + new Vector3(m.Width * 0.5f, -0.06f, m.Depth * 0.5f), new Vector3(m.Width + 900f, 0.05f, m.Depth + 900f), P.Sea, "FarSea", false);
+                plane.GetComponent<Renderer>().sharedMaterial = MaterialCache.Get(P.Sea, 0.85f);
+            }
         }
 
         private static void BuildWaterKind(FieldMap m, Transform parent, FieldWater kind, Color color, string name)
@@ -373,10 +382,10 @@ namespace Uchujin.World
             StructureBuilder.Box(root, new Vector3(1.1f, 0.3f, 1.2f), new Vector3(0.14f, 0.4f, 0.5f), DarkWood, false, "BenchLeg");
         }
 
-        private static void Pier(Transform parent, Vector3 start, float yaw)
+        private static void Pier(Transform parent, Vector3 start, float yaw, float size = 1f)
         {
             var root = StructureBuilder.Root(parent, "LakePier", start, yaw);
-            const float len = 11f;
+            float len = 11f * Mathf.Max(0.5f, size);
             StructureBuilder.Box(root, new Vector3(0f, 0f, len * 0.5f), new Vector3(2f, 0.2f, len), Wood, true, "Deck");
             for (int k = 0; k <= 3; k++)
             {

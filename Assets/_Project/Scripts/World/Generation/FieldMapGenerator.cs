@@ -45,6 +45,8 @@ namespace Uchujin.World
                 case StarSkeleton.LakeForest: return new LakeForestGen();
                 case StarSkeleton.StreamSlope: return new StreamSlopeGen();
                 case StarSkeleton.WaterfallMountain: return new WaterfallMountainGen();
+                case StarSkeleton.MarshRiver: return new MarshRiverGen();
+                case StarSkeleton.BeachCape: return new BeachCapeGen();
                 default: return null;
             }
         }
