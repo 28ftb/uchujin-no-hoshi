@@ -168,18 +168,29 @@ namespace Uchujin.World
                 var m = FieldMapGenerator.Generate(seed, g.Skeleton, sm.Id, g.Palette);
                 if (m != null) g.FieldMaps.Add(m);
             }
-            var maps = g.FieldMaps;
-            var villageDepth = g.Layout.WaterDepthSampler;
-            g.Layout.WaterDepthSampler = (x, z) =>
+            // マップごとの配置データ（エリア・水域・釣り場・生息地点・高さと水の判定）を、星の配置データの下に付ける
+            var L = g.Layout;
+            foreach (var m in g.FieldMaps) L.Maps.Add(FieldMapLayout.Build(m));
+            // 村の配置データの高さ・水・水深の問い合わせは、位置が村の外のマップならそのマップに回す
+            // （生き物の足元・連れて歩く子・水深の制限などが、呼び出し側を変えずに村の外のマップでも動く）
+            var vh = L.HeightSampler;
+            var vw = L.WaterTester;
+            var vd = L.WaterDepthSampler;
+            var subs = L.Maps;
+            L.HeightSampler = (x, z) =>
             {
-                if (Mathf.Abs(x) <= WorldTuning.Half + FieldMap.Margin && Mathf.Abs(z) <= WorldTuning.Half + FieldMap.Margin) return villageDepth(x, z);
-                foreach (var m in maps)
-                    if (m.ContainsWorld(x, z))
-                    {
-                        var l = m.ToLocal(x, z);
-                        return m.WaterDepth(l.x, l.y);
-                    }
-                return 0f;
+                for (int i = 0; i < subs.Count; i++) if (subs[i].ContainsXZ(x, z)) return subs[i].HeightSampler(x, z);
+                return vh(x, z);
+            };
+            L.WaterTester = (x, z) =>
+            {
+                for (int i = 0; i < subs.Count; i++) if (subs[i].ContainsXZ(x, z)) return subs[i].WaterTester(x, z);
+                return vw(x, z);
+            };
+            L.WaterDepthSampler = (x, z) =>
+            {
+                for (int i = 0; i < subs.Count; i++) if (subs[i].ContainsXZ(x, z)) return subs[i].WaterDepthSampler(x, z);
+                return vd(x, z);
             };
         }
 

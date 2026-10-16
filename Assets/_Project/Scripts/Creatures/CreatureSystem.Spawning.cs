@@ -159,8 +159,9 @@ namespace Uchujin.Creatures
 
             foreach (var p in Game.Players.All)
             {
-                if (p.CurrentAreaId != AreaIds.Overworld) continue;
-                if (SpawnAround(p, layout)) changed = true;
+                // 村と、村の外の地域・道中マップ（生成バージョン3）。いるマップの生息地点から出す
+                if (!AreaIds.IsSurface(p.CurrentAreaId)) continue;
+                if (SpawnAround(p, layout.LayoutAt(p.Position))) changed = true;
             }
             if (changed)
             {
@@ -174,7 +175,7 @@ namespace Uchujin.Creatures
             Vector3 pp = player.Position;
             int near = 0;
             foreach (var w in wilds.Values)
-                if (w.areaId == AreaIds.Overworld && (w.Position - pp).sqrMagnitude < NearCountRadius * NearCountRadius) near++;
+                if (w.areaId == player.CurrentAreaId && (w.Position - pp).sqrMagnitude < NearCountRadius * NearCountRadius) near++;
             if (near >= MaxWildNearPlayer) return false;
 
             var rng = SpawnRng;
@@ -202,7 +203,7 @@ namespace Uchujin.Creatures
                 var chosen = CreatureDatabase.All[idx];
                 var pos = cand.Pos + new Vector3(rng.Range(-1.2f, 1.2f), 0, rng.Range(-1.2f, 1.2f));
                 pos = PlaceOnSurface(layout, pos, chosen);
-                AddWild(chosen, pos, AreaIds.Overworld, cand.Reason);
+                AddWild(chosen, pos, player.CurrentAreaId, cand.Reason);
                 return true;
             }
             return false;
@@ -322,7 +323,7 @@ namespace Uchujin.Creatures
             // 同じ種が近くに多すぎない
             int same = 0;
             foreach (var x in wilds.Values)
-                if (x.speciesId == sp.Id && x.areaId == AreaIds.Overworld && (x.Position - playerPos).sqrMagnitude < NearCountRadius * NearCountRadius) same++;
+                if (x.speciesId == sp.Id && AreaIds.IsSurface(x.areaId) && (x.Position - playerPos).sqrMagnitude < NearCountRadius * NearCountRadius) same++;
             if (same >= MaxSameSpeciesNear) return 0f;
 
             // 静かな高台（ユメボシ「夜の静かな高台」・ホシノコ「生き物たちが静かに集まる場所」）
@@ -703,14 +704,14 @@ namespace Uchujin.Creatures
                     // 匂いにつられて、餌の好きな生き物がやって来ることがある【仮数値 35%】
                     b.Summoned = true;
                     var rng = SeededRandom.For(Game.Planet.seed, "creatures.bait." + (Clock != null ? Clock.TotalMinutes : 0) + "." + spawnCounter++);
-                    if (rng.Chance(0.35f) && b.AreaId == AreaIds.Overworld && Game.Layout != null) SummonForBait(b, rng);
+                    if (rng.Chance(0.35f) && AreaIds.IsSurface(b.AreaId) && Game.Layout != null) SummonForBait(b, rng);
                 }
             }
         }
 
         private void SummonForBait(BaitSpot b, SeededRandom rng)
         {
-            var layout = Game.Layout;
+            var layout = Game.Layout.LayoutAt(b.Position);
             var reg = layout.GetAreaAt(b.Position);
             bool inFarm = layout.FarmRect.width > 0 && layout.FarmRect.Contains(new Vector2(b.Position.x, b.Position.z));
             var area = inFarm ? AreaType.Farm : reg != null ? reg.type : AreaType.Meadow;
@@ -732,7 +733,7 @@ namespace Uchujin.Creatures
             var dir = rng.InsideUnitCircle().normalized;
             var pos = layout.OnGround(b.Position + new Vector3(dir.x, 0, dir.y) * rng.Range(8f, 11f));
             if (layout.IsWater(pos)) return;
-            AddWild(list[idx], pos, AreaIds.Overworld, "bait");
+            AddWild(list[idx], pos, b.AreaId, "bait");
             MarkDirty();
             RefreshWildViews();
         }

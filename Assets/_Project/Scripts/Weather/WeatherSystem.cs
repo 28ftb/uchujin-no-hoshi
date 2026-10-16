@@ -66,6 +66,7 @@ namespace Uchujin.Weather
             var s = Current;
             var layout = Game != null ? Game.Layout : null;
             if (layout == null) return s;
+            layout = layout.LayoutAt(position); // 村の外の地域・道中マップ（湖の森の湖の霧など）
             var area = layout.GetAreaAt(position);
             // 湖の範囲は、重なる小さなエリア（森など）より湖を優先する（湖の霧・風の弱まり：マップ設計 v0.2 §2.3）
             AreaRegion lake = null;

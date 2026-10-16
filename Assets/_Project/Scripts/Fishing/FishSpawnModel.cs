@@ -109,15 +109,19 @@ namespace Uchujin.Fishing
             spotById.Clear();
             planetWaters = FishWater.None;
             if (layout == null) return;
-            foreach (var fs in layout.FishingSpots)
+            // 村と、村の外の地域・道中マップ（生成バージョン3）の釣り場をすべて読む
+            foreach (var map in layout.AllMaps)
             {
-                if (fs == null || string.IsNullOrEmpty(fs.id)) continue;
-                var info = FromLayoutSpot(fs, layout);
-                spots.Add(info);
-                spotById[info.Id] = info;
-                planetWaters |= info.Water;
+                foreach (var fs in map.FishingSpots)
+                {
+                    if (fs == null || string.IsNullOrEmpty(fs.id)) continue;
+                    var info = FromLayoutSpot(fs, map);
+                    spots.Add(info);
+                    spotById[info.Id] = info;
+                    planetWaters |= info.Water;
+                }
+                foreach (var w in map.Waters) planetWaters |= ToFishWater(w.type);
             }
-            foreach (var w in layout.Waters) planetWaters |= ToFishWater(w.type);
             trendDay = -1;
         }
 
@@ -189,10 +193,11 @@ namespace Uchujin.Fishing
                 if (d.magnitude <= s.Radius) return s;
             }
             if (layout == null) return null;
+            // その位置のマップ（村か、村の外の地域・道中マップ）で判定する
+            layout = layout.LayoutAt(point);
             // 地形の範囲外（家の中・鉱山など屋外から離れた座標）は水面ではない。
             // 高さ場は範囲外を端のマスに丸めるため、端が海の星では家の中や鉱山でも「水」と判定されてしまう。
-            float half = layout.WorldSize * 0.5f + 10f;
-            if (Mathf.Abs(point.x) > half || Mathf.Abs(point.z) > half) return null;
+            if (!layout.ContainsXZ(point.x, point.z)) return null;
             if (!layout.IsWater(point))
             {
                 // 水面判定が無い／ずれている場合の保険：釣り場の水面位置のすぐ近くなら水とみなす

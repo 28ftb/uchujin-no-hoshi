@@ -41,7 +41,7 @@ namespace Uchujin.Creatures
                         if (CreatureDatabase.IsCaseItem(item.itemId)) return sys.ReleaseFromCase(ctx.SelectedSlot);
                         var def = item.Definition;
                         // 野生の生き物が来るのは屋外と鉱山だけ。家の中・住民の家・店の中では餌を置かない（無駄に失くさない）
-                        bool wildArea = ctx.AreaId == AreaIds.Overworld || AreaIds.IsMine(ctx.AreaId);
+                        bool wildArea = AreaIds.IsSurface(ctx.AreaId) || AreaIds.IsMine(ctx.AreaId);
                         if (def.Category == ItemCategory.CreatureFood)
                         {
                             if (wildArea) return sys.PlaceBait(ctx.SelectedSlot, ctx.GroundPoint);

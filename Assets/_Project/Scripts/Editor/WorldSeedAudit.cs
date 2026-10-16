@@ -78,6 +78,11 @@ namespace Uchujin.EditorTools
             // 道の曲がり方と高低差（マップごと）
             public Dictionary<string, float[]> MapShape = new Dictionary<string, float[]>();
             public bool MapIndependent = true;
+            /// <summary>村の外のマップ（ID ごと）で住める魚の種類・生息地点のある生き物の種類。</summary>
+            public Dictionary<string, int> MapFish = new Dictionary<string, int>();
+            public Dictionary<string, int> MapCreatures = new Dictionary<string, int>();
+            public Dictionary<string, int> MapSpots = new Dictionary<string, int>();
+            public Dictionary<string, int> MapHabitats = new Dictionary<string, int>();
         }
 
         private static readonly string[] CondNames = { "雨", "晴れ（昼）", "強風", "霧", "無風", "荒天", "晴れた夜" };
@@ -209,14 +214,45 @@ namespace Uchujin.EditorTools
                     res.CreatureArea[i] = res.CreaturePreferred[i] = c.MinFloor <= MiningTuning.FloorCount ? 1 : 0;
                     continue;
                 }
-                foreach (var h in L.HabitatPoints)
-                {
-                    var area = h.area == AreaType.Lake ? AreaType.Pond : h.area;
-                    if (Array.IndexOf(c.Areas, area) < 0) continue;
-                    res.CreatureArea[i]++;
-                    if (c.Features.Length == 0 || Array.IndexOf(c.Features, h.feature) >= 0) res.CreaturePreferred[i]++;
-                }
+                foreach (var map in L.AllMaps)
+                    foreach (var h in map.HabitatPoints)
+                    {
+                        var area = h.area == AreaType.Lake ? AreaType.Pond : h.area;
+                        if (Array.IndexOf(c.Areas, area) < 0) continue;
+                        res.CreatureArea[i]++;
+                        if (c.Features.Length == 0 || Array.IndexOf(c.Features, h.feature) >= 0) res.CreaturePreferred[i]++;
+                    }
                 if (c.Underground && res.CreatureArea[i] == 0) res.CreatureArea[i] = res.CreaturePreferred[i] = 1; // 地上で少なくても鉱山にいる
+            }
+
+            // 村の外のマップで住める魚・生き物の種類
+            foreach (var map in L.Maps)
+            {
+                res.MapSpots[map.MapId] = map.FishingSpots.Count;
+                res.MapHabitats[map.MapId] = map.HabitatPoints.Count;
+                var ids = new HashSet<string>();
+                foreach (var fs in map.FishingSpots) ids.Add(fs.id);
+                int nf = 0;
+                foreach (var s in fish)
+                {
+                    bool ok = false;
+                    foreach (var sp in spawn.Spots) if (ids.Contains(sp.Id) && FishSpawnModel.CanLiveIn(s, sp)) { ok = true; break; }
+                    if (ok) nf++;
+                }
+                res.MapFish[map.MapId] = nf;
+                int nc = 0;
+                foreach (var c in creatures)
+                {
+                    if (c.Underground && !c.AlsoOverworld) continue;
+                    bool ok = false;
+                    foreach (var h in map.HabitatPoints)
+                    {
+                        var area = h.area == AreaType.Lake ? AreaType.Pond : h.area;
+                        if (Array.IndexOf(c.Areas, area) >= 0 && (c.Features.Length == 0 || Array.IndexOf(c.Features, h.feature) >= 0)) { ok = true; break; }
+                    }
+                    if (ok) nc++;
+                }
+                res.MapCreatures[map.MapId] = nc;
             }
 
             // 道のり
@@ -744,6 +780,14 @@ namespace Uchujin.EditorTools
                 Stat(md, "R2 湖の森：ゲートから岬の先まで走る秒数", results, r => r.R2Seconds);
                 Stat(md, "R2 湖の森：湖の差し渡し（最も狭い所, m）", results, r => r.R2LakeDiameter);
                 Stat(md, "村のゲートの向きと骨格の方角のずれ（度）", results, r => r.GateAngle);
+                foreach (var id in results[0].MapFish.Keys)
+                {
+                    string mid = id;
+                    Stat(md, $"{mid}：釣り場の数", results, r => r.MapSpots.TryGetValue(mid, out var v) ? v : 0);
+                    Stat(md, $"{mid}：住める魚の種類", results, r => r.MapFish.TryGetValue(mid, out var v) ? v : 0);
+                    Stat(md, $"{mid}：生息地点の数", results, r => r.MapHabitats.TryGetValue(mid, out var v) ? v : 0);
+                    Stat(md, $"{mid}：好む地点のある生き物の種類", results, r => r.MapCreatures.TryGetValue(mid, out var v) ? v : 0);
+                }
                 string[] shapeNames = { "本道の長さ÷直線距離", "本道の直線からの最大のずれ(m)", "本道の曲がり角の数", "最低の高さ(m)", "最高の高さ(m)", "坂25°以上の地面(%)", "坂45°以上の地面(%)", "本道の最大の坂(%)" };
                 foreach (var id in results[0].MapShape.Keys)
                     for (int k = 0; k < shapeNames.Length; k++)

@@ -234,11 +234,58 @@ namespace Uchujin.World
 
     /// <summary>
     /// 生成済みワールドの配置データ。高さ・水判定の関数は World モジュールが設定する。
+    /// 生成バージョン3（マップ設計 v0.3 §10.2）：星の配置データ（＝村 R1 のマップ）の下に、村の外の地域・道中マップの配置データ（Maps）を持つ。
+    /// マップは互いに離れた座標にあるので、位置からマップが決まる（LayoutAt）。村の配置データの高さ・水・エリアの問い合わせは、
+    /// 位置が村の外のマップなら、そのマップに回す（生き物の足元・天候などがそのまま動く）。釣り場・生息地点・エリアの一覧はマップごと。
+    /// 住民の行き先などは今までどおり村の一覧だけを見る。
     /// </summary>
     public class WorldLayout
     {
         /// <summary>ワールドの一辺（m）。原点中心に ±WorldSize/2。</summary>
         public float WorldSize = 400f;
+        /// <summary>マップの ID（村は "r1"。マップ設計 v0.3 の骨格の ID）。</summary>
+        public string MapId = "r1";
+        /// <summary>このマップのエリアの ID（村は屋外 "overworld"、村の外は "map:&lt;ID&gt;"）。</summary>
+        public string MapAreaId = Core.AreaIds.Overworld;
+        /// <summary>村の外のマップの範囲（XZ。見た目の縁を含む）。村は WorldSize で判定する。</summary>
+        public bool HasBounds;
+        public Vector2 BoundsMin, BoundsMax;
+        /// <summary>村の外の地域・道中マップ（星の配置データにだけ入る）。</summary>
+        public readonly List<WorldLayout> Maps = new List<WorldLayout>();
+
+        /// <summary>このマップの範囲の中か（村は端から10mの外側まで）。</summary>
+        public bool ContainsXZ(float x, float z)
+        {
+            if (HasBounds) return x >= BoundsMin.x && x <= BoundsMax.x && z >= BoundsMin.y && z <= BoundsMax.y;
+            float half = WorldSize * 0.5f + 10f;
+            return Mathf.Abs(x) <= half && Mathf.Abs(z) <= half;
+        }
+
+        /// <summary>位置のあるマップの配置データ（村の外のマップでなければ自分）。</summary>
+        public WorldLayout LayoutAt(Vector3 p)
+        {
+            for (int i = 0; i < Maps.Count; i++)
+                if (Maps[i].ContainsXZ(p.x, p.z)) return Maps[i];
+            return this;
+        }
+
+        /// <summary>エリアの ID のマップの配置データ（無ければ null）。</summary>
+        public WorldLayout LayoutOfArea(string areaId)
+        {
+            if (areaId == MapAreaId) return this;
+            foreach (var m in Maps) if (m.MapAreaId == areaId) return m;
+            return null;
+        }
+
+        /// <summary>自分と、村の外のマップすべて。</summary>
+        public IEnumerable<WorldLayout> AllMaps
+        {
+            get
+            {
+                yield return this;
+                foreach (var m in Maps) yield return m;
+            }
+        }
         public readonly List<FacilityInfo> Facilities = new List<FacilityInfo>();
         public readonly List<AreaRegion> Areas = new List<AreaRegion>();
         public readonly List<WaterBody> Waters = new List<WaterBody>();
@@ -286,6 +333,11 @@ namespace Uchujin.World
 
         public AreaRegion GetAreaAt(Vector3 p)
         {
+            if (Maps.Count > 0)
+            {
+                var m = LayoutAt(p);
+                if (m != this) return m.GetAreaAt(p);
+            }
             AreaRegion best = null;
             float bestR = float.MaxValue;
             foreach (var a in Areas)

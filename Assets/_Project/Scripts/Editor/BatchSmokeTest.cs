@@ -178,16 +178,21 @@ namespace Uchujin.EditorTools
                         if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
                     }
                     if (At(8, 17f)) Log("村のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
-                    if (At(9, 19f)) Shot("04d_t1");
-                    if (At(10, 19.5f))
+                    if (At(9, 24f))
+                    {
+                        Shot("04d_t1");
+                        var wild = GameObject.Find("WildCreatures");
+                        Log("花の野道の野生の生き物：" + (wild != null ? wild.transform.childCount : -1) + "匹（見えている数）・小川の釣り場の魚影：" + (GameObject.Find("FishSpot_spot.stream.t1.0") != null ? "あり" : "なし"));
+                    }
+                    if (At(10, 24.5f))
                     {
                         var gate = GameObject.Find("Gate_gate.t1.r2");
                         if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
                         else Log("花の野道の湖の森側のゲートが見つからない");
                     }
-                    if (At(11, 22f)) Log("花の野道の先のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
-                    if (At(12, 24f)) Shot("04e_r2");
-                    if (At(13, 24.5f))
+                    if (At(11, 27f)) Log("花の野道の先のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                    if (At(12, 29f)) Shot("04e_r2");
+                    if (At(13, 29.5f))
                     {
                         var pier = GameObject.Find("LakePier");
                         if (pier != null)
@@ -196,9 +201,17 @@ namespace Uchujin.EditorTools
                             g.LocalPlayer.Avatar.rotation = Quaternion.LookRotation(pier.transform.forward);
                         }
                     }
-                    if (At(14, 27f)) Shot("04f_r2_lake");
-                    if (At(15, 27.5f) && g.LocalPlayer.CurrentAreaId != AreaIds.Overworld) g.Areas.Transition(g.LocalPlayer, AreaIds.Overworld);
-                    if (At(16, 29f)) Stage = 4;
+                    if (At(14, 35f))
+                    {
+                        Shot("04f_r2_lake");
+                        var wild = GameObject.Find("WildCreatures");
+                        var lp = g.LocalPlayer.Position;
+                        var area = g.Layout != null ? g.Layout.GetAreaAt(lp) : null;
+                        Log("湖の森の野生の生き物：" + (wild != null ? wild.transform.childCount : -1) + "匹・岬の先の釣り場の魚影：" + (GameObject.Find("FishSpot_spot.r2.lake.tip") != null ? "あり" : "なし")
+                            + "・今いるエリア：" + (area != null ? area.nameJa : "なし") + "・足元の水深：" + (g.Layout != null ? g.Layout.WaterDepthAt(lp + g.LocalPlayer.Avatar.forward * 4f).ToString("0.0") : "?") + "m");
+                    }
+                    if (At(15, 35.5f) && g.LocalPlayer.CurrentAreaId != AreaIds.Overworld) g.Areas.Transition(g.LocalPlayer, AreaIds.Overworld);
+                    if (At(16, 37f)) Stage = 4;
                     break;
                 case 4: // 住民と会話
                 {
