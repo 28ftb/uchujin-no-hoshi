@@ -13,7 +13,8 @@ $unityLog = Join-Path $logPath 'unity-build.log'
 $publishResultPath = 'C:\GameHubPublisher\work\publish-after-build-uchujin-no-hoshi.json'
 
 function Read-PublishResult([string]$Path) {
-    try { Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json } catch { return $null }
+    # 公開結果は日本語入りの UTF-8（BOM なし）。Windows PowerShell 5 は既定で Shift-JIS として読み、JSON が壊れるので UTF-8 を指定する
+    try { Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return $null }
 }
 
 # 前回の公開がまだビルドを読んでいる間は、ビルドを上書きしない。
@@ -31,9 +32,9 @@ $arguments = @('-batchmode', '-nographics', '-quit', '-projectPath', ('"' + $pro
 $unity = Start-Process -FilePath $UnityPath -ArgumentList $arguments -PassThru -WindowStyle Hidden
 $unity.WaitForExit()
 if ($unity.ExitCode -ne 0) { throw "Unity のビルドが失敗しました（終了コード $($unity.ExitCode)）。ログ: $unityLog" }
-Get-Content -LiteralPath (Join-Path $logPath 'build-results.txt')
+Get-Content -LiteralPath (Join-Path $logPath 'build-results.txt') -Encoding UTF8
 
-$buildLog = Get-Content -LiteralPath $unityLog -Raw
+$buildLog = Get-Content -LiteralPath $unityLog -Raw -Encoding UTF8
 $skip = [regex]::Match($buildLog, 'GAMEHUB PUBLISH: SKIP[^\r\n]*')
 if ($skip.Success) { Write-Output $skip.Value; return }
 if ($buildLog -notmatch 'GAMEHUB PUBLISH: STARTED') { Write-Warning 'GAMEHUB PUBLISH: FAIL（公開を開始できませんでした。Unity のログを確認）'; exit 1 }
