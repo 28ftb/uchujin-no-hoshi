@@ -5,7 +5,8 @@ namespace Uchujin.Story
 {
     /// <summary>
     /// キャラクターメイクの選択肢（基本決定 §3【確定】キャラクターメイクあり。項目・選択肢の数は【未決定】→充実させた仮案）。
-    /// CharacterAppearance（コア）のインデックスと色に対応する。項目を増やす時はここと AvatarBuilder に追加する。
+    /// CharacterAppearance（コア）のインデックスと色に対応する。項目を増やす時は、ここの一覧と部品ファイル名（*Files）、
+    /// Tools/Avatar/build_avatar_kit.py の部品を足して FBX を書き出す。
     /// 肌の色は人間以外の色も選べる（主人公は別宇宙から来た人：企画書 §2.1）。
     /// </summary>
     public static class AppearanceCatalog
@@ -59,9 +60,13 @@ namespace Uchujin.Story
             new LocText("おだんご", "Bun"),
             new LocText("つんつん", "Spiky"),
             new LocText("もこもこ", "Fluffy"),
-            new LocText("ぱっつん", "Blunt bangs"),
-            new LocText("アホ毛", "Cowlick"),
+            new LocText("ふたつおだんご", "Twin buns"),
+            new LocText("くるくる", "Curls"),
             new LocText("触角ヘア", "Feeler locks"),
+            new LocText("みつあみ", "Braids"),
+            new LocText("七三わけ", "Side part"),
+            new LocText("モヒカン", "Mohawk"),
+            new LocText("サイドだけ", "Side tufts"),
         };
 
         public static readonly LocText[] Tops =
@@ -75,6 +80,9 @@ namespace Uchujin.Story
             new LocText("オーバーオール", "Overalls"),
             new LocText("マント", "Cape"),
             new LocText("ベスト", "Vest"),
+            new LocText("ポンチョ", "Poncho"),
+            new LocText("白衣", "Lab coat"),
+            new LocText("エプロン", "Apron"),
         };
 
         public static readonly LocText[] Bottoms =
@@ -100,20 +108,77 @@ namespace Uchujin.Story
         {
             new LocText("なし", "None"),
             new LocText("アンテナ", "Antennae"),
-            new LocText("帽子", "Cap"),
+            new LocText("キャップ", "Cap"),
             new LocText("ゴーグル", "Goggles"),
             new LocText("リボン", "Ribbon"),
             new LocText("ニット帽", "Beanie"),
             new LocText("メガネ", "Glasses"),
             new LocText("ヘッドホン", "Headphones"),
-            new LocText("花かざり", "Flower"),
-            new LocText("ヘルメット", "Helmet"),
+            new LocText("花かんむり", "Flower crown"),
+            new LocText("宇宙ヘルメット", "Space helmet"),
             new LocText("ネコ耳", "Cat ears"),
             new LocText("王冠", "Crown"),
             new LocText("マフラー", "Scarf"),
             new LocText("星のヘアピン", "Star pin"),
             new LocText("つの", "Horns"),
+            new LocText("ベレー帽", "Beret"),
+            new LocText("麦わら帽子", "Straw hat"),
+            new LocText("シルクハット", "Top hat"),
+            new LocText("バケットハット", "Bucket hat"),
+            new LocText("ターバン", "Turban"),
+            new LocText("セーラー帽", "Sailor hat"),
+            new LocText("コック帽", "Chef hat"),
+            new LocText("ハンチング", "Newsboy cap"),
+            new LocText("バンダナ", "Bandana"),
         };
+
+        /// <summary>宇宙人のしるし（主人公は別の宇宙から来た人：企画書 §2.1）。NOKA の住民の種族の特徴が元。</summary>
+        public static readonly LocText[] AlienTraits =
+        {
+            new LocText("なし", "None"),
+            new LocText("ひれ耳", "Fin ears"),
+            new LocText("ながい耳", "Long ears"),
+            new LocText("光る触角", "Glowing feelers"),
+            new LocText("ちいさなつの", "Little horns"),
+            new LocText("星のしっぽ", "Star tail"),
+            new LocText("光るもよう", "Glowing marks"),
+            new LocText("まる耳", "Round ears"),
+        };
+
+        // ---- 部品ファイル（Resources/Avatar/*.fbx。上の一覧と同じ順。Tools/Avatar/build_avatar_kit.py の部品名）----
+
+        public static readonly string[] BodyFiles = { "Normal", "Normal", "Slim", "Sturdy", "Round", "Fluffy" };
+        public static readonly string[] FaceFiles = { "Smile", "Open", "Calm", "Cat", "Smirk", "Rosy", "Freckles", "Brows", "Tiny", "Stars" };
+        public static readonly string[] EyeFiles = { "Round", "Droopy", "Sharp", "Sparkly", "Happy", "Dots", "Big", "One", "Three", "Sleepy" };
+        public static readonly string[] HairFiles =
+        {
+            null, "Short", "Bob", "Long", "Twintails", "Ponytail", "Topbun", "Spiky", "Afro", "Buns", "Curls", "Feelers", "Braids", "Sidepart",
+            "Mohawk", "Sides",
+        };
+        public static readonly string[] TopFiles =
+            { "Tshirt", "Hoodie", "Jacket", "Spacesuit", "Dress", "Sweater", "Overalls", "Cape", "Vest", "Poncho", "Labcoat", "Apron" };
+        public static readonly string[] BottomFiles = { "Trousers", "Shorts", "Skirt", "Puffy", "Spacepants", "Leggings" };
+        public static readonly string[] ShoeFiles = { "Sneakers", "Boots", "Sandals", "Moonboots", "Barefoot" };
+        public static readonly string[] AccessoryFiles =
+        {
+            null, "Trait_Antennae", "Acc_Cap", "Acc_Goggles", "Acc_Ribbon", "Acc_Beanie", "Acc_Glasses", "Acc_Headphones", "Acc_Flowers",
+            "Acc_Helmet", "Acc_CatEars", "Acc_Crown", "Acc_Scarf", "Acc_StarPin", "Trait_Horns", "Acc_Beret", "Acc_Straw", "Acc_Tophat",
+            "Acc_Bucket", "Acc_Turban", "Acc_Sailor", "Acc_Chef", "Acc_Newsboy", "Acc_Bandana",
+        };
+        public static readonly string[] TraitFiles = { null, "Fins", "LongEars", "Antennae", "Horns", "Tail", "Glowdots", "RoundEars" };
+
+        /// <summary>頭にかぶる帽子（高く盛った髪を隠す）。</summary>
+        public static bool IsHat(int accessory)
+        {
+            switch (accessory)
+            {
+                case 2: case 5: case 15: case 16: case 17: case 18: case 19: case 20: case 21: case 22: case 23: return true;
+                default: return false;
+            }
+        }
+
+        /// <summary>帽子を髪の上に持ち上げる高さ（メートル、キットの大きさで）。もこもこ・くるくるの髪だけ。</summary>
+        public static float HatLift(int hairStyle) => hairStyle == 8 ? 0.15f : hairStyle == 10 ? 0.05f : 0f;
 
         // ---- 色見本 ----
 
@@ -177,6 +242,7 @@ namespace Uchujin.Story
             a.outfitBottom = Wrap(a.outfitBottom, Bottoms.Length);
             a.shoes = Wrap(a.shoes, Shoes.Length);
             a.accessory = Wrap(a.accessory, Accessories.Length);
+            a.alienTrait = Wrap(a.alienTrait, AlienTraits.Length);
             if (a.height <= 0f) a.height = 1f;
             if (a.headSize <= 0f) a.headSize = 1f;
             a.height = Mathf.Clamp(a.height, 0.85f, 1.15f);
@@ -201,8 +267,9 @@ namespace Uchujin.Story
                 outfitBottom = Random.Range(0, Bottoms.Length),
                 shoes = Random.Range(0, Shoes.Length),
                 accessory = Random.value < 0.25f ? 0 : Random.Range(1, Accessories.Length),
+                alienTrait = Random.value < 0.4f ? 0 : Random.Range(1, AlienTraits.Length),
             };
-            a.skinColor = Random.value < 0.55f ? Pick(SkinHuman) : Pick(SkinAlien);
+            a.skinColor = Random.value < 0.45f ? Pick(SkinHuman) : Pick(SkinAlien);
             a.eyeColor = Pick(EyeColors);
             a.hairColor = Pick(HairColors);
             a.topColor = Pick(ClothColors);
@@ -211,6 +278,8 @@ namespace Uchujin.Story
             a.accessoryColor = Pick(ClothColors);
             // 「ひとつ目」「みっつ目」は少し出にくくする（選べば必ず使える）
             if ((a.eyeType == 7 || a.eyeType == 8) && Random.value < 0.5f) a.eyeType = Random.Range(0, 7);
+            // こものの「アンテナ」「つの」と、しるしの触角・つのは重ねない
+            if ((a.accessory == 1 && a.alienTrait == 3) || (a.accessory == 14 && a.alienTrait == 4)) a.alienTrait = 0;
             return a;
         }
 

@@ -95,10 +95,11 @@ namespace Uchujin.Story
             if (AutoRotate) Yaw += dt * 25f;
             if (avatarHolder != null) avatarHolder.transform.localRotation = Quaternion.Euler(0, Yaw, 0);
             camBlend = Mathf.MoveTowards(camBlend, CloseUp ? 1f : 0f, dt * 3f);
-            var far = new Vector3(0, 1.0f, 5.4f);
-            var near = new Vector3(0, 1.45f, 2.2f);
-            var lookFar = new Vector3(0, 0.85f, 0);
-            var lookNear = new Vector3(0, 1.38f, 0);
+            // NOKA の頭身のキット（AvatarBuilder.KitScale）：頭の中心が約1.2m、帽子を入れて約1.8m
+            var far = new Vector3(0, 1.0f, 5.0f);
+            var near = new Vector3(0, 1.32f, 2.3f);
+            var lookFar = new Vector3(0, 0.88f, 0);
+            var lookNear = new Vector3(0, 1.22f, 0);
             cam.transform.localPosition = Vector3.Lerp(far, near, camBlend);
             cam.transform.LookAt(root.transform.TransformPoint(Vector3.Lerp(lookFar, lookNear, camBlend)));
         }

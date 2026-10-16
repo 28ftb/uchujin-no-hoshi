@@ -176,6 +176,7 @@ namespace Uchujin.Story
             OptionRow(Loc.T("体型", "Body type"), AppearanceCatalog.BodyTypes, ref current.bodyType);
             SliderRow(Loc.T("身長", "Height"), ref current.height, 0.85f, 1.15f);
             SliderRow(Loc.T("頭の大きさ", "Head size"), ref current.headSize, 0.8f, 1.4f);
+            OptionRow(Loc.T("宇宙人のしるし", "Alien feature"), AppearanceCatalog.AlienTraits, ref current.alienTrait);
             GUILayout.Space(6);
             GUILayout.Label(Loc.T("肌の色（別の宇宙から来たあなたは、どんな色でも）", "Skin color (you come from another universe - any color works)"), UIStyles.LabelBold);
             GUILayout.Label(Loc.T("人に近い色", "Human-like"), UIStyles.LabelDim);
@@ -216,7 +217,7 @@ namespace Uchujin.Story
         {
             OptionRow(Loc.T("アクセサリー", "Accessory"), AppearanceCatalog.Accessories, ref current.accessory);
             ColorRow(Loc.T("アクセサリーの色", "Accessory color"), "acc", ref current.accessoryColor, AppearanceCatalog.ClothColors);
-            GUILayout.Label(Loc.T("※ リボンやツインテールの結び目にもこの色が使われます", "* Hair ties also use this color"), UIStyles.LabelDim);
+            GUILayout.Label(Loc.T("※ ポニーテールやツインテールの結び目にもこの色が使われます", "* Hair ties also use this color"), UIStyles.LabelDim);
         }
 
         private void DrawNameTab()

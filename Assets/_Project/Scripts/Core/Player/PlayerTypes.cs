@@ -189,6 +189,7 @@ namespace Uchujin.Core
         public Color accessoryColor = Color.white;
         public int shoes;
         public Color shoesColor = new Color(0.4f, 0.3f, 0.25f);
+        public int alienTrait;        // 宇宙人のしるし（ひれ耳・触角など）0=なし
 
         public CharacterAppearance Clone() => (CharacterAppearance)MemberwiseClone();
     }

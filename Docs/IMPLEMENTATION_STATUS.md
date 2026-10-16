@@ -214,6 +214,15 @@ Unity で開いた後、まずコンパイルエラーの解消 → 起動 → �
 - 確認：画面ありの自動確認で全段階エラー0。キャラメイクのプレビュー・家の中・鉱山も点光源で照らされる。比較画像 `Logs/compare_builtin_vs_urp.png`（コミット対象外）。
 - 残る調整：光源の真下だけ白飛びしやすい（鉱山の到着地点のランタン）、昼の広場はまだやや明るい、家の中の周りが緑の平面に見える。
 
+## 9. キャラクターメイクの見た目を NOKA の人物モデルに（2026-10-16）
+- 主人公の見た目を、プリミティブの組み合わせから **NOKA（同じ作者の別作品）の人物モデルを元にした部品キット** に置き換えた。
+  `Tools/Avatar/build_avatar_kit.py`（Blender 5.2、外部アセットなし）が91部品の FBX を `Assets/_Project/Resources/Avatar/` に書き出し、
+  `Story/CharacterMake/AvatarBuilder.cs` が組み立てて色を塗る。キットが無い時はコアの仮の見た目（`PlayerAvatarFactory.BuildDefault`）。
+- 項目を増やした：宇宙人のしるし（新項目 `CharacterAppearance.alienTrait`、JsonUtility なので古いセーブ・マルチの相手は0＝なし）、髪型12→16、上着9→12、こもの15→24。
+- 大きさ：NOKA の人物を `AvatarBuilder.KitScale` = 1.15 倍（頭の中心 約1.2m）【仮】。キャラメイクのプレビューのカメラもこれに合わせた。
+- 確認：TypeCheck・Unity Compile、`AvatarKitGallery` で24通りの見本を前・斜め・後ろ・顔のアップで撮影（`Logs/AvatarGallery/`）、画面ありの自動確認。
+- 未確認：マルチの他プレイヤー表示、着替えアプリからの作り直し、歩き・道具を振る動きの見た目（キーボード操作での確認）。
+
 ### まだ確認できていないこと
 - キー・マウス・IME による実際の操作感、音。→ `Docs/PLAYTEST_CHECKLIST.md` の手順で Editor 再生して確認する。
 - ビルド（Always Included Shaders の設定を含む）、マルチ（LAN UDP の2起動・EOS）。
