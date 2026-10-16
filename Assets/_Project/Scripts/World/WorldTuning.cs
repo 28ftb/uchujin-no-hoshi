@@ -36,8 +36,10 @@ namespace Uchujin.World
         public const float FieldWalkMaxStep = 1.7f;
         /// <summary>走る速さ（m/秒。PlayerController.runSpeed と同じ）。</summary>
         public const float RunSpeed = 8f;
-        /// <summary>道中の本道を走り抜ける時間の上限（秒。§3.3 は 30〜35秒、§10.5 は 40秒以内）。</summary>
-        public const float FieldRouteMaxSeconds = 38f;
+        /// <summary>道中の本道を走り抜ける時間の上限（秒）。ユーザー指示（2026-10-17）：曲がりくねりを優先し、40〜45秒まで延びてよい。</summary>
+        public const float FieldRouteMaxSeconds = 45f;
+        /// <summary>本道の坂の上限（4m の区間の勾配。道は 8% を目安に均し、少しの余裕をみる）。</summary>
+        public const float FieldRoadMaxGrade = 0.13f;
         /// <summary>地域マップのゲートから主な場所（湖の岬など）までの上限（秒）。</summary>
         public const float FieldRegionMaxSeconds = 26f;
         /// <summary>村のゲートを置く位置（村の中心から、端の手前までの距離。見えない壁の内側）。</summary>

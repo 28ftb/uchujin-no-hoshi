@@ -196,6 +196,140 @@ namespace Uchujin.World
         }
 
         // =================================================================
+        // 道の経路探し（地形に沿う。坂がきついほど遠回りを選ぶ）
+        // =================================================================
+
+        private sealed class MinHeap
+        {
+            private readonly List<(int id, float key)> items = new List<(int, float)>();
+            public int Count => items.Count;
+
+            public void Push(int id, float key)
+            {
+                items.Add((id, key));
+                int i = items.Count - 1;
+                while (i > 0)
+                {
+                    int p = (i - 1) / 2;
+                    if (items[p].key <= items[i].key) break;
+                    (items[p], items[i]) = (items[i], items[p]);
+                    i = p;
+                }
+            }
+
+            public int Pop()
+            {
+                var top = items[0].id;
+                var last = items[items.Count - 1];
+                items.RemoveAt(items.Count - 1);
+                if (items.Count == 0) return top;
+                items[0] = last;
+                int i = 0;
+                while (true)
+                {
+                    int l = i * 2 + 1, r = l + 1, m = i;
+                    if (l < items.Count && items[l].key < items[m].key) m = l;
+                    if (r < items.Count && items[r].key < items[m].key) m = r;
+                    if (m == i) break;
+                    (items[m], items[i]) = (items[i], items[m]);
+                    i = m;
+                }
+                return top;
+            }
+        }
+
+        /// <summary>
+        /// グリッドの上で from から to への道を探す（8方向）。坂の勾配が大きいほど高くつき、maxGrade を超える所（段・崖）は通らない。
+        /// extraCost は1mあたりの追加の重み（水・縁など）。見つかった経路は 8m おきに間引いて、なめらかな曲線にして返す。
+        /// </summary>
+        protected List<Vector2> FindPath(Vector2 from, Vector2 to, Func<int, float> extraCost, float maxGrade = 0.32f, float inset = 3f)
+        {
+            int n = N;
+            var g = new float[n];
+            var prev = new int[n];
+            var closed = new bool[n];
+            for (int i = 0; i < n; i++) { g[i] = float.MaxValue; prev[i] = -1; }
+            M.ToGrid(from.x, from.y, out int sx, out int sz);
+            M.ToGrid(to.x, to.y, out int tx, out int tz);
+            int s0 = M.Index(sx, sz), t0 = M.Index(tx, tz);
+            var target = new Vector2(M.XOf(tx), M.ZOf(tz));
+            var heap = new MinHeap();
+            g[s0] = 0f;
+            heap.Push(s0, Vector2.Distance(new Vector2(M.XOf(sx), M.ZOf(sz)), target));
+            int[] dx = { 1, -1, 0, 0, 1, 1, -1, -1 };
+            int[] dz = { 0, 0, 1, -1, 1, -1, 1, -1 };
+            while (heap.Count > 0)
+            {
+                int i = heap.Pop();
+                if (closed[i]) continue;
+                closed[i] = true;
+                if (i == t0) break;
+                int ix = i % M.NX, iz = i / M.NX;
+                for (int k = 0; k < 8; k++)
+                {
+                    int nx = ix + dx[k], nz = iz + dz[k];
+                    if (nx < 0 || nz < 0 || nx >= M.NX || nz >= M.NZ) continue;
+                    int j = M.Index(nx, nz);
+                    if (closed[j]) continue;
+                    var l = new Vector2(M.XOf(nx), M.ZOf(nz));
+                    // 遊べる範囲の縁は通らない（始まりと終わりのゲートの近くだけは別）
+                    if (!M.InsidePlayable(l, inset) && Vector2.Distance(l, from) > 9f && Vector2.Distance(l, target) > 9f) continue;
+                    float dist = k < 4 ? FieldMap.Step : FieldMap.Step * 1.41421f;
+                    float grade = Mathf.Abs(M.H[j] - M.H[i]) / dist;
+                    if (grade > maxGrade) continue;
+                    float w = 1f + 25f * grade * grade + (grade > 0.1f ? (grade - 0.1f) * 40f : 0f) + extraCost(j);
+                    float ng = g[i] + dist * w;
+                    if (ng >= g[j]) continue;
+                    g[j] = ng;
+                    prev[j] = i;
+                    heap.Push(j, ng + Vector2.Distance(l, target));
+                }
+            }
+            if (prev[t0] < 0 && t0 != s0) return null;
+            var cells = new List<int>();
+            for (int c = t0; c >= 0; c = prev[c]) cells.Add(c);
+            cells.Reverse();
+            var ctrl = new List<Vector2> { from };
+            for (int k = 4; k < cells.Count - 4; k += 4) ctrl.Add(LocalOf(cells[k]));
+            ctrl.Add(to);
+            return CatmullRom(ctrl, 3f);
+        }
+
+        /// <summary>本道の一番急な坂（4m の区間ごとの勾配の最大）。</summary>
+        protected float MaxRoadGrade(out Vector2 at)
+        {
+            at = Vector2.zero;
+            var cum = Cumulative(M.Road);
+            float len = cum[cum.Length - 1];
+            float worst = 0f;
+            for (float s = 0f; s + 4f <= len; s += 2f)
+            {
+                var a = PointOn(M.Road, cum, s);
+                var b = PointOn(M.Road, cum, s + 4f);
+                if (!M.InsidePlayable(a, 1f) || !M.InsidePlayable(b, 1f)) continue;
+                float gr = Mathf.Abs(M.SampleTerrain(b.x, b.y) - M.SampleTerrain(a.x, a.y)) / 4f;
+                if (gr > worst)
+                {
+                    worst = gr;
+                    at = a;
+                }
+            }
+            return worst;
+        }
+
+        protected static Vector2 PointOn(List<Vector2> line, float[] cum, float along)
+        {
+            along = Mathf.Clamp(along, 0f, cum[cum.Length - 1]);
+            for (int i = 1; i < cum.Length; i++)
+            {
+                if (along > cum[i]) continue;
+                float seg = Mathf.Max(1e-4f, cum[i] - cum[i - 1]);
+                return Vector2.Lerp(line[i - 1], line[i], (along - cum[i - 1]) / seg);
+            }
+            return line[line.Count - 1];
+        }
+
+        // =================================================================
         // 道（本道・脇道）を均す
         // =================================================================
 
@@ -239,6 +373,110 @@ namespace Uchujin.World
                 }
             }
             return t;
+        }
+
+        /// <summary>2本の線が交わる所（それぞれの始点からの道のり）。</summary>
+        protected static List<(float, float)> Crossings(List<Vector2> a, List<Vector2> b)
+        {
+            var res = new List<(float, float)>();
+            var ca = Cumulative(a);
+            var cb = Cumulative(b);
+            for (int i = 1; i < a.Count; i++)
+                for (int j = 1; j < b.Count; j++)
+                {
+                    if (!SegIntersect(a[i - 1], a[i], b[j - 1], b[j], out float t, out float u)) continue;
+                    float ra = ca[i - 1] + t * (ca[i] - ca[i - 1]);
+                    float rb = cb[j - 1] + u * (cb[j] - cb[j - 1]);
+                    bool dup = false;
+                    foreach (var x in res) if (Mathf.Abs(x.Item1 - ra) < 10f) dup = true;
+                    if (!dup) res.Add((ra, rb));
+                }
+            return res;
+        }
+
+        protected static bool SegIntersect(Vector2 p, Vector2 p2, Vector2 q, Vector2 q2, out float t, out float u)
+        {
+            var r = p2 - p;
+            var s = q2 - q;
+            float den = r.x * s.y - r.y * s.x;
+            t = u = 0f;
+            if (Mathf.Abs(den) < 1e-6f) return false;
+            var qp = q - p;
+            t = (qp.x * s.y - qp.y * s.x) / den;
+            u = (qp.x * r.y - qp.y * r.x) / den;
+            return t >= 0f && t <= 1f && u >= 0f && u <= 1f;
+        }
+
+        /// <summary>
+        /// 本道と小川の交わり（浅瀬）の高さを合わせる。道の方が高い時は小川の水面をその所だけ上げ（浅瀬の小さな段になる。
+        /// 上流は元から高いので逆流しない）、低い時は道を水面の少し下まで上げる（前後の坂は ClampGrade で広げる）。
+        /// roadT は両端だけを固定して坂をならした後の道の高さ。
+        /// </summary>
+        protected void SettleFords(FieldStream st, List<(float road, float stream)> crossings, float[] roadT, float[] rcum, bool[] pinned)
+        {
+            var scum = Cumulative(st.Points);
+            foreach (var (ri, si) in crossings)
+            {
+                float rt = ValueAlong(rcum, roadT, ri);
+                float surf = ValueAlong(scum, st.Surface, si);
+                float want = rt + 0.15f;
+                if (want > surf)
+                {
+                    for (int k = 0; k < st.Points.Count; k++)
+                    {
+                        float d = scum[k] - si;
+                        if (Mathf.Abs(d) < 4.5f || (d < 0f && st.Surface[k] < want))
+                        {
+                            if (st.Surface[k] < want) st.Surface[k] = want;
+                            fill.Add(st.Points[k]);
+                        }
+                    }
+                }
+                else
+                {
+                    for (int k = 0; k < roadT.Length; k++)
+                        if (Mathf.Abs(rcum[k] - ri) < 2.6f)
+                        {
+                            roadT[k] = surf - 0.15f;
+                            pinned[k] = true;
+                        }
+                }
+            }
+        }
+
+        /// <summary>水面を上げた浅瀬の所（川底と岸を盛って、水が地面から浮かないようにする）。</summary>
+        protected readonly List<Vector2> fill = new List<Vector2>();
+
+        /// <summary>ゲートの前（道の始まり・終わりから len m）は骨格の高さに固定する（ゲートの高さを両側でそろえる）。</summary>
+        protected static void PinEnds(float[] t, float[] cum, bool[] pinned, float startH, float endH, float len = 12f)
+        {
+            float total = cum[cum.Length - 1];
+            for (int k = 0; k < t.Length; k++)
+            {
+                if (!float.IsNaN(startH) && cum[k] <= len) { t[k] = startH; pinned[k] = true; }
+                if (!float.IsNaN(endH) && cum[k] >= total - len) { t[k] = endH; pinned[k] = true; }
+            }
+        }
+
+        /// <summary>道の高さの列の坂を maxGrade 以下にする（pinned の点は動かさない。浅瀬・ゲートなど）。</summary>
+        protected static void ClampGrade(float[] t, float[] cum, float maxGrade, bool[] pinned)
+        {
+            int n = t.Length;
+            for (int pass = 0; pass < 6; pass++)
+            {
+                for (int i = 1; i < n; i++)
+                {
+                    if (pinned[i]) continue;
+                    float ds = cum[i] - cum[i - 1];
+                    t[i] = Mathf.Clamp(t[i], t[i - 1] - maxGrade * ds, t[i - 1] + maxGrade * ds);
+                }
+                for (int i = n - 2; i >= 0; i--)
+                {
+                    if (pinned[i]) continue;
+                    float ds = cum[i + 1] - cum[i];
+                    t[i] = Mathf.Clamp(t[i], t[i + 1] - maxGrade * ds, t[i + 1] + maxGrade * ds);
+                }
+            }
         }
 
         /// <summary>道の帯を targets の高さに均す（half の内側はそのまま、blend の幅でなじませる）。</summary>
@@ -316,6 +554,18 @@ namespace Uchujin.World
                 float bed = surf - dep * (1f - GeoUtil.SmoothStep(rad * 0.45f, rad + 0.3f, d));
                 float bank = Mathf.Lerp(bed, surf + 0.45f, GeoUtil.SmoothStep(rad * 0.6f, rad + 2.2f, d));
                 if (d < rad + 2.2f) M.H[i] = Mathf.Min(M.H[i], d < rad ? bed : bank);
+                // 水面を上げた浅瀬：川底と岸を盛る（岸はまわりの地面へなだらかに下ろす）
+                if (fill.Count > 0 && d < rad + 5f)
+                {
+                    var l = LocalOf(i);
+                    bool near = false;
+                    foreach (var f in fill) if ((f - l).sqrMagnitude < 36f) { near = true; break; }
+                    if (near)
+                    {
+                        float floorH = d < rad ? bed : Mathf.Lerp(surf + 0.12f, M.H[i], GeoUtil.SmoothStep(rad + 0.8f, rad + 5f, d));
+                        M.H[i] = Mathf.Max(M.H[i], floorH);
+                    }
+                }
                 if (d < rad + 0.35f && (float.IsNaN(M.WaterY[i]) || M.Water[i] == FieldWater.Stream))
                 {
                     M.WaterY[i] = surf;
@@ -596,6 +846,25 @@ namespace Uchujin.World
             }
             foreach (var p in M.Places)
                 if (!CanReach(p.Local, 4.5f)) M.Notes.Add($"{p.NameJa} へ歩いて行けない");
+            // 本道の急な坂（§3.3：坂はゆるく）
+            float worst = MaxRoadGrade(out var at);
+            if (worst > WorldTuning.FieldRoadMaxGrade)
+            {
+                float dg = float.MaxValue, ds = float.MaxValue, dt = float.MaxValue;
+                foreach (var g in M.Gates) dg = Mathf.Min(dg, Vector2.Distance(M.ToLocal(g.Position.x, g.Position.z), at));
+                foreach (var st in M.Streams) ds = Mathf.Min(ds, FieldMap.DistToPolyline(at, st.Points));
+                foreach (var tr in M.Trails) dt = Mathf.Min(dt, FieldMap.DistToPolyline(at, tr));
+                float along = 0f, best = float.MaxValue;
+                var cum = Cumulative(M.Road);
+                for (int i = 0; i < M.Road.Count; i++) { float d = Vector2.Distance(M.Road[i], at); if (d < best) { best = d; along = cum[i]; } }
+                var prof = new System.Text.StringBuilder();
+                for (float s = along - 6f; s <= along + 8f; s += 2f)
+                {
+                    var q = PointOn(M.Road, cum, s);
+                    prof.Append(M.SampleTerrain(q.x, q.y).ToString("0.0")).Append(' ');
+                }
+                M.Notes.Add($"本道に急な坂（{worst * 100f:0}%・{at.x:0},{at.y:0}・道のり{along:0}/{cum[cum.Length - 1]:0}・ゲート{dg:0}・小川{ds:0}・脇道{dt:0}・高さ {prof}）");
+            }
         }
     }
 
@@ -625,71 +894,46 @@ namespace Uchujin.World
             gateA = new Vector2(0f, D * 0.5f + r.Range(-24f, 24f));
             gateB = new Vector2(W, D * 0.5f + r.Range(-24f, 24f));
 
-            // 本道：ゲートからゲートまでほぼまっすぐ、ゆるく曲がる（§3.3）
-            var ctrl = new List<Vector2>
-            {
-                gateA,
-                new Vector2(W * 0.08f, gateA.y),
-                new Vector2(W * 0.36f, Mathf.Clamp(D * 0.5f + r.Range(-26f, 26f), 22f, D - 22f)),
-                new Vector2(W * 0.66f, Mathf.Clamp(D * 0.5f + r.Range(-26f, 26f), 22f, D - 22f)),
-                new Vector2(W * 0.92f, gateB.y),
-                gateB
-            };
-            M.Road.AddRange(CatmullRom(ctrl, 3f));
-
-            // 小川：湖の森からの流れ出し（R2 側の端、本道の脇）から村の側の端へ。どこかで本道と交わる（浅瀬で渡る）
+            // 小川：湖の森からの流れ出し（R2 側の端、本道の脇）から村の側の端へ。先に流れの線を決め、そのまわりを谷にする
             float sideB = gateB.y > D * 0.5f ? -1f : 1f;
             var s0 = new Vector2(W + FieldMap.Margin, gateB.y + sideB * 13f);
             var s1 = new Vector2(-FieldMap.Margin, Mathf.Clamp(gateA.y - sideB * 16f, 16f, D - 16f));
-            float amp = r.Range(10f, 18f), waves = r.Range(1.6f, 2.6f), phase = r.Range(0f, Mathf.PI * 2f);
+            // 大きく蛇行させる（本道と並んで走り続けず、離れたり近づいたりして、浅瀬で何度か交わる）
+            float amp = r.Range(20f, 32f), waves = r.Range(1.8f, 3.2f), phase = r.Range(0f, Mathf.PI * 2f);
             streamPts = new List<Vector2>();
-            int sn = Mathf.CeilToInt((s0.x - s1.x) / 3f);
-            for (int k = 0; k <= sn; k++)
+            // 遊べる範囲の外はまっすぐ（本道との交わりが必ずマップの中で起きるように）。中で大きく蛇行する
+            for (float x = s0.x; x >= s1.x - 0.01f; x -= 3f)
             {
-                float u = k / (float)sn;
-                var p = Vector2.Lerp(s0, s1, u);
+                float u = Mathf.Clamp01((W - x) / W);
+                float y = Mathf.Lerp(s0.y, s1.y, GeoUtil.SmoothStep(0f, 1f, u));
                 float env = Mathf.Sin(u * Mathf.PI);
-                p.y = Mathf.Clamp(p.y + Mathf.Sin(u * Mathf.PI * waves + phase) * amp * env, 16f, D - 16f);
-                streamPts.Add(p);
+                y = Mathf.Clamp(y + Mathf.Sin(u * Mathf.PI * waves + phase) * amp * env, 14f, D - 14f);
+                streamPts.Add(new Vector2(x, y));
             }
+            // 村の側が高い星では、小川は村の側から湖の森の側へ流れる（水は上へ流れない）
+            if (hA > hB - 2f) streamPts.Reverse();
 
-            // 丘（隠れた場所：本道側は急な崖、裏はなだらか。見えているのに回り込まないと登れない）
-            hillHeight = r.Range(6.5f, 8.5f);
-            hillBack = r.Range(28f, 34f);
-            hillFrontR = r.Range(7f, 8.5f);
-            bool hillOk = false;
-            for (int k = 0; k < 120 && !hillOk; k++)
-            {
-                var c = new Vector2(r.Range(W * 0.2f, W * 0.8f), r.Range(16f, D - 16f));
-                float dr = FieldMap.DistToPolyline(c, M.Road);
-                if (dr < 22f || dr > 40f) continue;
-                if (FieldMap.DistToPolyline(c, streamPts) < 18f) continue;
-                hillCenter = c;
-                // 本道に向く側を崖にする
-                Vector2 nearest = M.Road[0];
-                float bd = float.MaxValue;
-                foreach (var q in M.Road) { float d = Vector2.Distance(q, c); if (d < bd) { bd = d; nearest = q; } }
-                hillFront = (nearest - c).normalized;
-                hillOk = true;
-            }
-            if (!hillOk) M.Notes.Add("丘の場所がない");
+            // 道中の型（§8.2）：0＝開けた野の一本道、1＝丘を回り込む道、2＝段丘を折り返して登る道
+            PlanScarps(r);
+            if (M.Type == 1) PlanRoundHills(r);
 
-            // 高さ
+            // 高さ：全体の上り下り ＋ 段丘の段（2〜4m の崖。切れ目はゆるい坂）＋ うねり ＋ 小川の谷 ＋ 回り込む丘
             var roll = Noise("roll");
             Nearest(streamPts, 26f, out var sDist, out _);
+            float floorH = Mathf.Min(hA, hB) - 2.5f;
             for (int i = 0; i < N; i++)
             {
                 var l = LocalOf(i);
                 float t = Mathf.Clamp01(l.x / W);
-                float baseH = Mathf.Lerp(hA, hB, GeoUtil.SmoothStep(0f, 1f, t));
-                float h = baseH + (roll.Fbm(l.x * 0.017f, l.y * 0.017f, 4) - 0.5f) * 7f;
-                // 小川のまわりは谷（流れに沿ってなだらかに下がる）
+                float baseH = Mathf.Lerp(hA, hB - stepSign * stepTotal, GeoUtil.SmoothStep(0f, 1f, t)) + ScarpsAt(l);
+                float h = baseH + (roll.Fbm(l.x * 0.017f, l.y * 0.017f, 4) - 0.5f) * 8f;
                 if (sDist[i] != float.MaxValue)
                 {
                     float w = 1f - GeoUtil.SmoothStep(5f, 26f, sDist[i]);
                     h = Mathf.Lerp(h, baseH - 0.6f + sDist[i] * 0.05f, w);
                 }
-                if (hillOk) h += HillAt(l);
+                h += RoundHillsAt(l);
+                h = Mathf.Max(h, floorH);
                 h += Rim(l);
                 M.H[i] = h;
             }
@@ -697,16 +941,65 @@ namespace Uchujin.World
             FlattenDisc(gateA, 10f, 10f, hA);
             FlattenDisc(gateB, 10f, 10f, hB);
 
+            // 本道：地形に沿って探す（坂がきつい所・段・丘を避ける）。型によって、まっすぐ寄り・丘を回り込む・段の切れ目を折り返す、と曲がり方が変わる
+            // 小川の中は高くつき（渡るのは短く）、小川のすぐ脇を長く走るのも少し高くつく（谷沿いばかりにならないように）
+            Nearest(streamPts, 14f, out var wetDist, out _);
+            var road = FindPath(gateA, gateB, j =>
+            {
+                float wd = wetDist[j];
+                float nearStream = M.Type == 0 ? 0.08f : 0.22f;
+                float extra = wd == float.MaxValue ? 0f : wd < 4f ? 14f : (14f - wd) * nearStream;
+                float z = M.ZOf(j / M.NX);
+                float edge = Mathf.Min(z, D - z);
+                if (edge < 18f) extra += (18f - edge) * 0.35f;
+                // 型0（開けた野の一本道）：門と門を結ぶ線から離れるほど少し高くつく＝まっすぐ寄り
+                if (M.Type == 0) extra += GeoUtil.DistToSegment(LocalOf(j), gateA, gateB, out _) * 0.045f;
+                return extra;
+            });
+            if (road == null)
+            {
+                M.Notes.Add("本道の経路が見つからない");
+                road = CatmullRom(new List<Vector2> { gateA, new Vector2(W * 0.5f, D * 0.5f), gateB }, 3f);
+            }
+            M.Road.AddRange(road);
+
+            // 丘（隠れた場所：本道側は急な崖、裏はなだらか。見えているのに回り込まないと登れない）
+            hillHeight = r.Range(6.5f, 8.5f);
+            hillBack = r.Range(28f, 34f);
+            hillFrontR = r.Range(7f, 8.5f);
+            bool hillOk = false;
+            for (int k = 0; k < 400 && !hillOk; k++)
+            {
+                var c = new Vector2(r.Range(W * 0.15f, W * 0.85f), r.Range(16f, D - 16f));
+                float dr = FieldMap.DistToPolyline(c, M.Road);
+                if (dr < 22f || dr > 48f) continue;
+                if (FieldMap.DistToPolyline(c, streamPts) < 16f) continue;
+                if (NearScarp(c, 8f)) continue;
+                bool nearRound = false;
+                foreach (var rh in roundHills) if (Vector2.Distance(rh.c, c) < rh.r + 14f) nearRound = true;
+                if (nearRound) continue;
+                hillCenter = c;
+                Vector2 nearest = M.Road[0];
+                float bd = float.MaxValue;
+                foreach (var q in M.Road) { float d = Vector2.Distance(q, c); if (d < bd) { bd = d; nearest = q; } }
+                hillFront = (nearest - c).normalized;
+                hillOk = true;
+            }
+            if (!hillOk) M.Notes.Add("丘の場所がない");
+            else
+                for (int i = 0; i < N; i++) M.H[i] += HillAt(LocalOf(i));
+
             // 果樹の段（本道から少し離れた、ひと段高い平地）
             terraceYaw = 0f;
             bool terOk = false;
-            for (int k = 0; k < 160 && !terOk; k++)
+            for (int k = 0; k < 400 && !terOk; k++)
             {
                 var c = new Vector2(r.Range(W * 0.15f, W * 0.85f), r.Range(18f, D - 18f));
                 float dr = FieldMap.DistToPolyline(c, M.Road);
                 if (dr < 16f || dr > 34f) continue;
                 if (FieldMap.DistToPolyline(c, streamPts) < 16f) continue;
                 if (hillOk && Vector2.Distance(c, hillCenter) < hillBack + 14f) continue;
+                if (NearScarp(c, 11f) || RoundHillsAt(c) > 0.5f) continue;
                 terraceCenter = c;
                 terOk = true;
             }
@@ -720,13 +1013,14 @@ namespace Uchujin.World
             // 花畑（開けた草原の中）
             flowerRadius = r.Range(20f, 26f);
             bool flOk = false;
-            for (int k = 0; k < 200 && !flOk; k++)
+            for (int k = 0; k < 400 && !flOk; k++)
             {
                 var c = new Vector2(r.Range(W * 0.2f, W * 0.8f), r.Range(20f, D - 20f));
                 if (FieldMap.DistToPolyline(c, M.Road) < 10f) continue;
                 if (FieldMap.DistToPolyline(c, streamPts) < 10f) continue;
                 if (hillOk && Vector2.Distance(c, hillCenter) < hillBack + flowerRadius * 0.5f) continue;
                 if (terOk && Vector2.Distance(c, terraceCenter) < flowerRadius + 14f) continue;
+                if (NearScarp(c, flowerRadius * 0.6f) || RoundHillsAt(c) > 0.5f) continue;
                 flowerCenter = c;
                 flOk = true;
             }
@@ -734,36 +1028,31 @@ namespace Uchujin.World
 
             // 野の池（湧き水の池。小川とは別）
             bool pondOk = false;
-            for (int k = 0; k < 200 && !pondOk; k++)
+            for (int k = 0; k < 400 && !pondOk; k++)
             {
                 var c = new Vector2(r.Range(W * 0.22f, W * 0.78f), r.Range(18f, D - 18f));
                 float dr = FieldMap.DistToPolyline(c, M.Road);
-                if (dr < 16f || dr > 36f) continue;
-                if (FieldMap.DistToPolyline(c, streamPts) < 16f) continue;
-                if (hillOk && Vector2.Distance(c, hillCenter) < hillBack + 12f) continue;
+                if (dr < 14f || dr > 44f) continue;
+                if (FieldMap.DistToPolyline(c, streamPts) < 14f) continue;
+                if (hillOk && Vector2.Distance(c, hillCenter) < hillBack + 8f) continue;
                 if (terOk && Vector2.Distance(c, terraceCenter) < 26f) continue;
                 if (flOk && Vector2.Distance(c, flowerCenter) < flowerRadius + 12f) continue;
+                if (NearScarp(c, 10f) || RoundHillsAt(c) > 0.5f) continue;
                 pondCenter = c;
                 pondOk = true;
             }
             if (!pondOk) M.Notes.Add("野の池の場所がない");
 
-            // 本道を均す（坂は 8% まで、両端はゲートの高さ）
-            var roadT = RoadTargets(M.Road, 0.08f, hA, hB);
-            // 小川との交わりは浅瀬：道の高さを水面の少し下に合わせる
+            // 小川との交わりは浅瀬（飛び石）。小川・池・果樹の段を先に掘ってから、本道を最後に均す（道の脇を後から削らない）
             var crossings = Crossings(M.Road, streamPts);
             var stream = CarveStream("stream.t1", streamPts, r.Range(1.3f, 1.7f), 0.42f);
             var rcum = Cumulative(M.Road);
             var scum = Cumulative(streamPts);
+            var fordSurf = new List<float>();
             foreach (var (ri, si) in crossings)
             {
                 float surf = ValueAlong(scum, stream.Surface, si);
-                for (int k = 0; k < M.Road.Count; k++)
-                {
-                    float d = Mathf.Abs(rcum[k] - ri);
-                    if (d < 7f) roadT[k] = Mathf.Lerp(surf - 0.18f, roadT[k], GeoUtil.SmoothStep(2.5f, 7f, d));
-                }
-                // 浅瀬の水深と飛び石
+                fordSurf.Add(surf);
                 for (int k = 0; k < streamPts.Count; k++)
                     if (Mathf.Abs(scum[k] - si) < 4.5f)
                     {
@@ -776,10 +1065,25 @@ namespace Uchujin.World
                     AddStructure(FieldStructureKind.SteppingStone, cp + dir * k * 1.15f + new Vector2(-dir.y, dir.x) * 1.2f, r.Range(0f, 360f), 1f, null, surf + 0.1f);
             }
             if (crossings.Count == 0) M.Notes.Add("小川が本道と交わらない（浅瀬なし）");
+            // 本道の高さ（坂は 8% まで、両端はゲートの高さ）を決めてから、浅瀬で道と小川の高さを合わせる
+            var roadT = RoadTargets(M.Road, 0.08f, hA, hB);
+            var pinned = new bool[M.Road.Count];
+            PinEnds(roadT, rcum, pinned, hA, hB);
+            ClampGrade(roadT, rcum, 0.08f, pinned);
+            SettleFords(stream, crossings, roadT, rcum, pinned);
+            ClampGrade(roadT, rcum, 0.08f, pinned);
+            // 飛び石の高さを合わせ直す（浅瀬の水面を上げた所がある）
+            foreach (var stn in M.Structures)
+                if (stn.Kind == FieldStructureKind.SteppingStone)
+                {
+                    float sAlong = 0f, bd = float.MaxValue;
+                    for (int k = 0; k < streamPts.Count; k++) { float d = Vector2.Distance(streamPts[k], stn.Local); if (d < bd) { bd = d; sAlong = scum[k]; } }
+                    stn.Y = ValueAlong(scum, stream.Surface, sAlong) + 0.1f;
+                }
+            ApplyStream(stream);
+            if (pondOk) CarvePond(pondCenter, r.Range(7f, 9.5f), r.Range(1.3f, 1.6f));
+            if (terOk) FlattenDisc(terraceCenter, 8.5f, 0f, terraceY);
             FlattenAlong(M.Road, roadT, WorldTuning.FieldRoadHalfWidth, 3.5f);
-            // ゲートの前は骨格の高さにそろえ直す（道をならした時の平均で少し下がるため）
-            FlattenDisc(gateA + Vector2.right * WorldTuning.FieldGateInset, 6f, 6f, hA);
-            FlattenDisc(gateB + Vector2.left * WorldTuning.FieldGateInset, 6f, 6f, hB);
 
             // 脇道（本道から池・果樹の段・丘の裏へ）
             if (pondOk) AddTrail(pondCenter, 9.5f);
@@ -792,10 +1096,6 @@ namespace Uchujin.World
                 AddTrail(back, 0f);
             }
 
-            ApplyStream(stream);
-            if (pondOk) CarvePond(pondCenter, r.Range(7f, 9.5f), r.Range(1.3f, 1.6f));
-            if (terOk) FlattenDisc(terraceCenter, 8.5f, 0f, terraceY);
-
             // 東屋（本道の中ほど、雨宿り）
             float midAlong = rcum[rcum.Length - 1] * r.Range(0.42f, 0.58f);
             var mid = PointAlong(M.Road, rcum, midAlong);
@@ -804,6 +1104,8 @@ namespace Uchujin.World
             if (M.WaterNear(gz.x, gz.y, 4f)) gz = mid - (gz - mid);
             FlattenDisc(gz, 3.6f, 2.5f, M.SampleTerrain(gz.x, gz.y));
             AddStructure(FieldStructureKind.Gazebo, gz, YawOf(mid - gz));
+            // 脇道・東屋で本道の脇を触ったので、本道の上だけもう一度均す
+            FlattenAlong(M.Road, roadT, WorldTuning.FieldRoadHalfWidth, 1.2f);
 
             // ゲートと道標
             AddGate(StarSkeleton.Village, new Vector2(0f, gateA.y), Vector2.right);
@@ -824,6 +1126,115 @@ namespace Uchujin.World
                 AddPlace("t1.hilltop", "丘の上（隠れた場所）", hillCenter, hidden: true);
                 AddStructure(FieldStructureKind.Crystal, hillCenter, r.Range(0f, 360f), 1.2f);
             }
+        }
+
+        // ---- 段丘の段（道中を横切る崖。切れ目はゆるい坂）----
+        private sealed class Scarp
+        {
+            public float X, Wobble, Freq, Phase, Height;
+            public readonly List<float> Passes = new List<float>();
+            public float PassWidth, RampLength;
+        }
+
+        private readonly List<Scarp> scarps = new List<Scarp>();
+        private float stepSign = 1f, stepTotal;
+        private readonly List<(Vector2 c, float r, float h)> roundHills = new List<(Vector2, float, float)>();
+
+        /// <summary>
+        /// 段丘の段を決める。型0：段1本（切れ目は2つの門を結ぶ線の近く＝道はまっすぐ寄り）。型1：段1〜2本（切れ目はばらばら）。
+        /// 型2：段3本（切れ目が左右に互い違い＝道は折り返して登る）。段の高さ 2〜4m は飛び降りられる（帰りの近道）。
+        /// </summary>
+        private void PlanScarps(SeededRandom r)
+        {
+            float W = M.Width, D = M.Depth;
+            int count = M.Type == 0 ? 1 : M.Type == 1 ? r.Range(1, 3) : 3;
+            stepSign = hB >= hA ? 1f : -1f;
+            stepTotal = 0f;
+            float side = r.Chance(0.5f) ? 1f : -1f;
+            for (int k = 0; k < count; k++)
+            {
+                float u = count == 1 ? r.Range(0.4f, 0.6f) : Mathf.Lerp(0.24f, 0.8f, k / (float)(count - 1)) + r.Range(-0.04f, 0.04f);
+                var s = new Scarp
+                {
+                    X = W * u,
+                    Wobble = r.Range(5f, 12f),
+                    Freq = r.Range(0.025f, 0.05f),
+                    Phase = r.Range(0f, Mathf.PI * 2f),
+                    Height = r.Range(2.2f, 4f),
+                    PassWidth = r.Range(7f, 10f)
+                };
+                s.RampLength = s.Height / 0.085f;
+                if (M.Type == 0)
+                {
+                    float onLine = Mathf.Lerp(gateA.y, gateB.y, u);
+                    s.Passes.Add(Mathf.Clamp(onLine + r.Range(-6f, 6f), 20f, D - 20f));
+                }
+                else if (M.Type == 1)
+                {
+                    s.Passes.Add(r.Range(22f, D - 22f));
+                    if (r.Chance(0.5f)) s.Passes.Add(r.Range(22f, D - 22f));
+                }
+                else
+                {
+                    s.Passes.Add(Mathf.Clamp(D * 0.5f + side * r.Range(28f, 34f), 18f, D - 18f));
+                    side = -side;
+                }
+                scarps.Add(s);
+                stepTotal += s.Height;
+            }
+        }
+
+        private float ScarpsAt(Vector2 l)
+        {
+            float h = 0f;
+            foreach (var s in scarps)
+            {
+                float xs = s.X + Mathf.Sin(l.y * s.Freq + s.Phase) * s.Wobble;
+                float pass = 0f;
+                foreach (var pz in s.Passes)
+                {
+                    float d = (l.y - pz) / s.PassWidth;
+                    pass = Mathf.Max(pass, Mathf.Exp(-d * d));
+                }
+                float width = Mathf.Lerp(1.8f, s.RampLength, pass);
+                h += stepSign * s.Height * GeoUtil.SmoothStep(xs - width * 0.5f, xs + width * 0.5f, l.x);
+            }
+            return h;
+        }
+
+        private bool NearScarp(Vector2 l, float gap)
+        {
+            foreach (var s in scarps)
+            {
+                float xs = s.X + Mathf.Sin(l.y * s.Freq + s.Phase) * s.Wobble;
+                if (Mathf.Abs(l.x - xs) < gap) return true;
+            }
+            return false;
+        }
+
+        /// <summary>型1：門と門を結ぶ線の上に、道が回り込む丘を2〜3つ置く。</summary>
+        private void PlanRoundHills(SeededRandom r)
+        {
+            float W = M.Width, D = M.Depth;
+            int count = r.Range(2, 4);
+            for (int k = 0; k < count; k++)
+            {
+                float u = Mathf.Lerp(0.25f, 0.75f, count == 1 ? 0.5f : k / (float)(count - 1)) + r.Range(-0.05f, 0.05f);
+                var c = new Vector2(W * u, Mathf.Clamp(Mathf.Lerp(gateA.y, gateB.y, u) + r.Range(-10f, 10f), 30f, D - 30f));
+                if (FieldMap.DistToPolyline(c, streamPts) < 16f) c.y = Mathf.Clamp(c.y + (c.y > D * 0.5f ? -18f : 18f), 26f, D - 26f);
+                roundHills.Add((c, r.Range(17f, 24f), r.Range(6f, 10f)));
+            }
+        }
+
+        private float RoundHillsAt(Vector2 l)
+        {
+            float h = 0f;
+            foreach (var rh in roundHills)
+            {
+                float k = Vector2.Distance(l, rh.c) / rh.r;
+                if (k < 1f) h += rh.h * (1f - GeoUtil.SmoothStep(0.15f, 1f, k));
+            }
+            return h;
         }
 
         private float HillAt(Vector2 l)
@@ -900,38 +1311,6 @@ namespace Uchujin.World
                 return Vector2.Lerp(line[i - 1], line[i], (along - cum[i - 1]) / seg);
             }
             return line[line.Count - 1];
-        }
-
-        /// <summary>2本の線が交わる所（それぞれの始点からの道のり）。</summary>
-        private static List<(float, float)> Crossings(List<Vector2> a, List<Vector2> b)
-        {
-            var res = new List<(float, float)>();
-            var ca = Cumulative(a);
-            var cb = Cumulative(b);
-            for (int i = 1; i < a.Count; i++)
-                for (int j = 1; j < b.Count; j++)
-                {
-                    if (!SegIntersect(a[i - 1], a[i], b[j - 1], b[j], out float t, out float u)) continue;
-                    float ra = ca[i - 1] + t * (ca[i] - ca[i - 1]);
-                    float rb = cb[j - 1] + u * (cb[j] - cb[j - 1]);
-                    bool dup = false;
-                    foreach (var x in res) if (Mathf.Abs(x.Item1 - ra) < 10f) dup = true;
-                    if (!dup) res.Add((ra, rb));
-                }
-            return res;
-        }
-
-        private static bool SegIntersect(Vector2 p, Vector2 p2, Vector2 q, Vector2 q2, out float t, out float u)
-        {
-            var r = p2 - p;
-            var s = q2 - q;
-            float den = r.x * s.y - r.y * s.x;
-            t = u = 0f;
-            if (Mathf.Abs(den) < 1e-6f) return false;
-            var qp = q - p;
-            t = (qp.x * s.y - qp.y * s.x) / den;
-            u = (qp.x * r.y - qp.y * r.x) / den;
-            return t >= 0f && t <= 1f && u >= 0f && u <= 1f;
         }
 
         protected override FieldPaint BasePaint(float lx, float lz, float noise)
@@ -1067,6 +1446,20 @@ namespace Uchujin.World
                 steep += M.Slope(q.x, q.y) / 3f;
             }
             if (steep < 40f) M.Notes.Add($"丘の崖がゆるい（{steep:0}°）");
+            // 段丘の段（§5：2〜4m の飛び降りられる段）と高低差
+            int n = 0, cliff = 0;
+            float mn = float.MaxValue, mx = float.MinValue;
+            for (int i = 0; i < N; i++)
+            {
+                var l = LocalOf(i);
+                if (!M.InsidePlayable(l, 4f)) continue;
+                n++;
+                mn = Mathf.Min(mn, M.H[i]);
+                mx = Mathf.Max(mx, M.H[i]);
+                if (Vector3.Angle(M.Normal(i % M.NX, i / M.NX), Vector3.up) >= 45f) cliff++;
+            }
+            if (cliff < n * 0.004f) M.Notes.Add($"段丘の段が少ない（{100f * cliff / Mathf.Max(1, n):0.0}%）");
+            if (mx - mn < 12f) M.Notes.Add($"高低差が小さい（{mx - mn:0}m）");
         }
     }
 
@@ -1084,6 +1477,7 @@ namespace Uchujin.World
         private Vector2 outletShore;
         private List<Vector2> outletPts;
         private List<Vector2> inletPts;
+        private List<Vector2> valleyPts;
         private Vector2 gazeboShore;
         private Vector2 quietShore;
 
@@ -1118,6 +1512,16 @@ namespace Uchujin.World
             lake.SteepAngle = lake.QuietAngle - sgn * 0.95f;
             lake.MudAngle = south - sgn * 1.75f;
             lake.SandMudAngle = lake.QuietAngle + sgn * 0.85f;
+            // 台地の崖の切れ目（ゆるい坂で台地へ上がれる所）：流れ出しの谷のほかに2か所
+            cliffNoise = Noise("cliff");
+            gaps.Add(south);
+            for (int k = 0; k < 40 && gaps.Count < 3; k++)
+            {
+                float a = r.Range(0f, Mathf.PI * 2f);
+                bool far = true;
+                foreach (var gpa in gaps) if (LakeInfo.AngleDiff(a, gpa) < 1.1f) far = false;
+                if (far) gaps.Add(a);
+            }
             float spitR = lake.RadiusAt(lake.SpitAngle);
             lake.SpitBase = c + lake.Dir(lake.SpitAngle) * (spitR * 1.08f);
             lake.SpitTip = c + lake.Dir(lake.SpitAngle) * (spitR * 0.3f);
@@ -1126,7 +1530,7 @@ namespace Uchujin.World
             quietShore = c + lake.Dir(lake.QuietAngle) * (lake.RadiusAt(lake.QuietAngle) + 3f);
 
             // 流れ出し（湖の南の岸 → 花の野道のゲートの脇）と、流れ込み（苔の谷側の北の端 → 湖）
-            var outletEnd = new Vector2(gate.x + sgn * -13f, -FieldMap.Margin);
+            var outletEnd = new Vector2(gate.x + sgn * -8f, -FieldMap.Margin);
             outletPts = CatmullRom(new List<Vector2> { outletShore, Vector2.Lerp(outletShore, outletEnd, 0.5f) + new Vector2(r.Range(-10f, 10f), 0f), new Vector2(outletEnd.x, 6f), outletEnd }, 3f);
             lake.HasInlet = true;
             float inletAng = lake.QuietAngle + sgn * 0.55f;
@@ -1136,8 +1540,10 @@ namespace Uchujin.World
 
             // 高さ：森の台地（35〜50m）、湖の盆地、南の流れ出しの谷
             var plateau = Noise("plateau");
-            Nearest(outletPts, 60f, out var oDist, out var oAlong);
-            var ocum = Cumulative(outletPts);
+            // 流れ出しの谷：湖の岸からゲートまで、底の平らな谷（幅24m）。小川と本道はこの谷の底を通る
+            valleyPts = CatmullRom(new List<Vector2> { outletShore, Vector2.Lerp(outletShore, new Vector2(gate.x, 10f), 0.5f), new Vector2(gate.x, 10f), new Vector2(gate.x, -FieldMap.Margin) }, 3f);
+            Nearest(valleyPts, 70f, out var oDist, out var oAlong);
+            var ocum = Cumulative(valleyPts);
             float oLen = ocum[ocum.Length - 1];
             for (int i = 0; i < N; i++)
             {
@@ -1147,13 +1553,17 @@ namespace Uchujin.World
                 float ang = LakeInfo.Angle(v);
                 float rr = lake.RadiusAt(ang);
                 float dShore = v.magnitude - rr;
-                float pl = 41f + (plateau.Fbm(l.x * 0.012f, l.y * 0.012f, 4) - 0.5f) * 13f;
+                float pl = 42f + (plateau.Fbm(l.x * 0.012f, l.y * 0.012f, 4) - 0.5f) * 12f;
                 // 岸で段差を作らない（水際の線がぎざぎざにならないよう、岸の内外でなめらかにつなぐ）
                 if (dShore < 0f) h = surface + 0.05f - (lake.DepthAt(l) + 0.05f) * GeoUtil.SmoothStep(0f, 6f, -dShore);
                 else
                 {
-                    float span = LakeInfo.AngleDiff(ang, lake.ShelfAngle) < 0.9f ? 70f : LakeInfo.AngleDiff(ang, lake.SteepAngle) < 0.8f ? 26f : 48f;
-                    h = surface + 0.05f + (pl - surface - 0.05f) * GeoUtil.SmoothStep(0f, span, dShore);
+                    // 湖のまわりの低地（岸から崖のふもとまで）→ 台地の崖（高さ8〜20m。切れ目はゆるい坂）→ 森の台地（36〜48m。§5：台地の縁に崖）
+                    float cliffD = CliffDistance(ang);
+                    float lowTop = surface + 3.5f;
+                    float low = surface + 0.05f + (lowTop - surface - 0.05f) * GeoUtil.SmoothStep(0f, cliffD, dShore);
+                    float width = Mathf.Lerp(3f, 40f, GapAt(ang));
+                    h = low + Mathf.Max(0f, pl - lowTop) * GeoUtil.SmoothStep(cliffD - width * 0.5f, cliffD + width * 0.5f, dShore);
                 }
                 if (lake.InSpit(l))
                 {
@@ -1165,7 +1575,7 @@ namespace Uchujin.World
                 {
                     float t = Mathf.Clamp01(oAlong[i] / oLen);
                     float floor = Mathf.Lerp(surface + 0.35f, hG, GeoUtil.SmoothStep(0f, 1f, t));
-                    h = Mathf.Min(h, floor + oDist[i] * 0.3f);
+                    h = Mathf.Min(h, floor + Mathf.Max(0f, oDist[i] - 12f) * 0.42f);
                 }
                 h += RimAt(l);
                 M.H[i] = h;
@@ -1189,25 +1599,38 @@ namespace Uchujin.World
             road.Add(Vector2.Lerp(lake.SpitBase, lake.SpitTip, 0.55f));
             road.Add(Vector2.Lerp(lake.SpitBase, lake.SpitTip, 0.88f));
             M.Road.AddRange(CatmullRom(road, 3f));
-            var roadT = RoadTargets(M.Road, 0.08f, hG, surface + 0.75f);
-            // 湖のそばと岬の上は水面より上に保つ（谷の中はゲートの高さへ下がってよい）
-            for (int k = 0; k < M.Road.Count; k++)
-                if (lake.K(M.Road[k]) < 1.3f) roadT[k] = Mathf.Max(roadT[k], surface + 0.6f);
-            FlattenAlong(M.Road, roadT, WorldTuning.FieldRoadHalfWidth, 3.5f);
-            FlattenDisc(gate + Vector2.up * WorldTuning.FieldGateInset, 6f, 6f, hG);
-
-            // 流れ出しの小川（湖の水面から下る）と、流れ込みの小川（湖の水面より下がらない）
+            // 流れ出しの小川（湖の水面から下る）と、流れ込みの小川（湖の水面より下がらない）。水面は道を均す前の地形で決める
             var outlet = CarveStream("stream.r2.outlet", outletPts, r.Range(1.4f, 1.8f), 0.45f, surface - 0.05f);
             var inlet = CarveStream("stream.r2.inlet", inletPts, r.Range(1.1f, 1.4f), 0.4f, float.NaN, surface);
-            // 流れ出しが本道と交わる所は浅瀬
-            for (int k = 0; k < outletPts.Count; k++)
-                if (FieldMap.DistToPolyline(outletPts[k], M.Road) < 4.5f)
+            // 流れ出しが本道と交わる所は浅瀬。小川を先に掘ってから、本道を最後に均す
+            var rcum = Cumulative(M.Road);
+            var ocum2 = Cumulative(outletPts);
+            var outCross = Crossings(M.Road, outletPts);
+            foreach (var (ri, si) in outCross)
+                for (int k = 0; k < outletPts.Count; k++)
+                    if (Mathf.Abs(ocum2[k] - si) < 4.5f)
+                    {
+                        outlet.Depth[k] = 0.2f;
+                        if (!outlet.Fords.Contains(k)) outlet.Fords.Add(k);
+                    }
+            var roadT = RoadTargets(M.Road, 0.08f, hG, surface + 0.75f);
+            var pinned = new bool[M.Road.Count];
+            pinned[pinned.Length - 1] = true;
+            PinEnds(roadT, rcum, pinned, hG, float.NaN);
+            // 湖のそばと岬の上は水面より上に保つ（谷の中はゲートの高さへ下がってよい）
+            for (int k = 0; k < M.Road.Count; k++)
+                if (lake.K(M.Road[k]) < 1.3f)
                 {
-                    outlet.Depth[k] = 0.2f;
-                    if (!outlet.Fords.Contains(k)) outlet.Fords.Add(k);
+                    roadT[k] = Mathf.Max(roadT[k], surface + 0.6f);
+                    pinned[k] = true;
                 }
+            ClampGrade(roadT, rcum, 0.08f, pinned);
+            // 浅瀬で道と小川の高さを合わせる
+            SettleFords(outlet, outCross, roadT, rcum, pinned);
+            ClampGrade(roadT, rcum, 0.08f, pinned);
             ApplyStream(outlet);
             ApplyStream(inlet);
+            FlattenAlong(M.Road, roadT, WorldTuning.FieldRoadHalfWidth, 3.5f);
 
             // 湖の水面（岬の陸は水面より上なので水にならない）
             for (int i = 0; i < N; i++)
@@ -1235,7 +1658,8 @@ namespace Uchujin.World
                 var pc = new Vector2(r.Range(26f, W - 26f), r.Range(26f, D - 26f));
                 if (North(pc) != (ponds == 1)) continue;
                 var v = pc - c;
-                if (v.magnitude - lake.RadiusAt(LakeInfo.Angle(v)) < 28f) continue;
+                // 台地の上（崖のふもとより 10m 以上奥）
+                if (v.magnitude - lake.RadiusAt(LakeInfo.Angle(v)) < CliffDistance(LakeInfo.Angle(v)) + 10f) continue;
                 if (M.DistToPaths(pc) < 18f) continue;
                 if (FieldMap.DistToPolyline(pc, inletPts) < 16f || FieldMap.DistToPolyline(pc, outletPts) < 16f) continue;
                 bool far = true;
@@ -1247,6 +1671,9 @@ namespace Uchujin.World
             }
             if (ponds < 2) M.Notes.Add($"森の池が{ponds}つ");
             if (M.Ponds.Count > 0) AddTrail(M.Ponds[0].Center + (M.Road[M.Road.Count / 3] - M.Ponds[0].Center).normalized * (M.Ponds[0].Radius + 2.5f));
+
+            // 脇道・東屋で本道の脇を触ったので、本道の上だけもう一度均す
+            FlattenAlong(M.Road, roadT, WorldTuning.FieldRoadHalfWidth, 1.2f);
 
             AddGate(StarSkeleton.FlowerPath, new Vector2(gate.x, 0f), Vector2.up);
             AddStructure(FieldStructureKind.Signpost, new Vector2(gate.x - sgn * 5f, 13f), 0f, 1f, StarSkeleton.FlowerPath);
@@ -1262,6 +1689,29 @@ namespace Uchujin.World
                 var toward = (gate - pd.Center).normalized;
                 AddPlace("r2.pond" + (k + 1), k == 0 ? "森の池（湧水口）" : "森の池（泥底）", pd.Center + toward * (pd.Radius + 2.8f), pocket: true);
             }
+        }
+
+        private WorldNoise cliffNoise;
+        private readonly List<float> gaps = new List<float>();
+
+        /// <summary>岸から台地の崖のふもとまでの距離（遠浅の側は広い低地、急深の側は崖が岸に迫る）。</summary>
+        private float CliffDistance(float ang)
+        {
+            float d = 30f + (cliffNoise.Fbm(Mathf.Cos(ang) * 1.3f + 5f, Mathf.Sin(ang) * 1.3f + 5f, 3) - 0.5f) * 16f;
+            if (LakeInfo.AngleDiff(ang, lake.ShelfAngle) < 0.9f) d += 18f * (1f - LakeInfo.AngleDiff(ang, lake.ShelfAngle) / 0.9f);
+            if (LakeInfo.AngleDiff(ang, lake.SteepAngle) < 0.8f) d -= 12f * (1f - LakeInfo.AngleDiff(ang, lake.SteepAngle) / 0.8f);
+            return Mathf.Max(14f, d);
+        }
+
+        private float GapAt(float ang)
+        {
+            float best = 0f;
+            foreach (var a in gaps)
+            {
+                float d = LakeInfo.AngleDiff(ang, a) / 0.2f;
+                best = Mathf.Max(best, Mathf.Exp(-d * d));
+            }
+            return best;
         }
 
         private float RimAt(Vector2 l)
@@ -1412,6 +1862,16 @@ namespace Uchujin.World
             // 岬の先から最深部の近くが狙えるか（岬の先の前の水深）
             var probe = Vector2.Lerp(lake.SpitTip, lake.Center, 0.6f);
             if (lake.DepthAt(probe) < lake.MaxDepth * 0.8f) M.Notes.Add("岬の先の前が浅い");
+            // 台地の崖（§5）：遊べる範囲の 0.8% 以上が 45°以上の斜面
+            int n = 0, steep = 0;
+            for (int i = 0; i < N; i++)
+            {
+                var l = LocalOf(i);
+                if (!M.InsidePlayable(l, 4f)) continue;
+                n++;
+                if (Vector3.Angle(M.Normal(i % M.NX, i / M.NX), Vector3.up) >= 45f) steep++;
+            }
+            if (steep < n * 0.008f) M.Notes.Add($"台地の崖が少ない（{100f * steep / Mathf.Max(1, n):0.0}%）");
         }
     }
 }

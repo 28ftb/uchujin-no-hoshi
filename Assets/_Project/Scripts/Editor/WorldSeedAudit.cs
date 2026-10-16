@@ -305,7 +305,8 @@ namespace Uchujin.EditorTools
         /// </summary>
         private static float[] MeasureShape(FieldMap m)
         {
-            var r = new float[8];
+            var r = new float[9];
+            r[8] = m.Type;
             var road = m.Road;
             float len = m.RoadLength();
             var a = road[0];
@@ -540,6 +541,17 @@ namespace Uchujin.EditorTools
                     for (int dx = -r; dx <= r; dx++)
                         if (dx * dx + dy * dy <= r * r && cx + dx >= 0 && cy + dy >= 0 && cx + dx < w && cy + dy < h) tex.SetPixel(cx + dx, cy + dy, c);
             };
+            // 本道の急な所（4m で 13% を超える所）をオレンジで
+            var rc = new float[m.Road.Count];
+            for (int i = 1; i < m.Road.Count; i++) rc[i] = rc[i - 1] + Vector2.Distance(m.Road[i - 1], m.Road[i]);
+            for (int i = 0; i < m.Road.Count; i++)
+                for (int j = i + 1; j < m.Road.Count; j++)
+                {
+                    if (rc[j] - rc[i] < 4f) continue;
+                    float gr = Mathf.Abs(m.SampleTerrain(m.Road[j].x, m.Road[j].y) - m.SampleTerrain(m.Road[i].x, m.Road[i].y)) / (rc[j] - rc[i]);
+                    if (gr > WorldTuning.FieldRoadMaxGrade && m.InsidePlayable(m.Road[i], 1f)) dot(m.Road[i], new Color(1f, 0.5f, 0f), 3);
+                    break;
+                }
             foreach (var gt in m.Gates) dot(m.ToLocal(gt.Position.x, gt.Position.z), Color.red, 7);
             foreach (var p in m.Places) dot(p.Local, p.Hidden ? new Color(0.7f, 0.3f, 0.9f) : new Color(1f, 0.9f, 0.1f), 5);
             foreach (var st in m.Structures)
@@ -741,6 +753,15 @@ namespace Uchujin.EditorTools
                         Stat(md, $"{mid}：{shapeNames[k]}", results, r => r.MapShape.TryGetValue(mid, out var v) ? v[kk] : 0f);
                     }
                 Stat(md, "t1：高低差(m)", results, r => r.MapShape.TryGetValue("t1", out var v) ? v[4] - v[3] : 0f);
+                // 道中の型ごとの本道の曲がり方（型0＝開けた野の一本道、1＝丘を回り込む道、2＝段丘を折り返して登る道）
+                for (int ty = 0; ty < 3; ty++)
+                {
+                    var sub = results.FindAll(x => x.MapShape.TryGetValue("t1", out var v) && Mathf.RoundToInt(v[8]) == ty);
+                    if (sub.Count == 0) continue;
+                    Stat(md, $"t1 型{ty}（{sub.Count}シード）：本道の長さ÷直線距離", sub, x => x.MapShape["t1"][0]);
+                    Stat(md, $"t1 型{ty}：本道の直線からの最大のずれ(m)", sub, x => x.MapShape["t1"][1]);
+                    Stat(md, $"t1 型{ty}：本道を走る秒数", sub, x => x.T1Seconds);
+                }
                 Stat(md, "r2：高低差(m)", results, r => r.MapShape.TryGetValue("r2", out var v) ? v[4] - v[3] : 0f);
             }
             md.Append($"\n**問題の合計：{problems}**（0なら合格）\n");
