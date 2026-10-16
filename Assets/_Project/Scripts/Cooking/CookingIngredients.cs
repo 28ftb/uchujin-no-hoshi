@@ -71,6 +71,13 @@ namespace Uchujin.Cooking
         public static IngredientSpec Colorful(int n = 1) => new IngredientSpec { Predicate = IsColorful, LabelJa = "色のある植物", LabelEn = "Colorful plant", Count = n };
         public static IngredientSpec AnyDish(int n = 1) => new IngredientSpec { Predicate = IsDish, LabelJa = "料理（なんでも）", LabelEn = "Any dish", Count = n };
 
+        /// <summary>振動を感じる器官を持つ魚（R06 の候補：ハモリウオ・オトナシ・サザナミメ・イワナキ。タグ Sensor＋RocketMaterial）。</summary>
+        public static bool IsSensorFish(ItemDefinition d) => IsFish(d) && d.HasTag(ItemTags.Sensor) && d.HasTag(ItemTags.RocketMaterial);
+        public static IngredientSpec SensorFish(int n = 1) => new IngredientSpec
+        {
+            Predicate = IsSensorFish, LabelJa = "振動を感じる魚", LabelEn = "Vibration-sensing fish", Count = n, SampleItemId = SharedItemIds.FishSazanamime
+        };
+
         /// <summary>料理の材料になりうる物か（実験の材料一覧の絞り込み）。</summary>
         public static bool IsFoodish(ItemDefinition d)
         {

@@ -131,10 +131,10 @@ namespace Uchujin.Quests
         {
             new[] { "R01", SharedItemIds.OreConductive },
             new[] { "R02", SharedItemIds.OreSturdyMetal },
-            new[] { "R03", SharedItemIds.FishFrostFin },
+            new[] { "R03", SharedItemIds.FishShimomadara },
             new[] { "R04", SharedItemIds.CropStarHoneyFruit },
             new[] { "R05", SharedItemIds.OreHeatproofMetal },
-            new[] { "R06", SharedItemIds.FishRippleEye },
+            new[] { "R06", SharedItemIds.FishSazanamime },
         };
 
         /// <summary>系統ごとの「絵や見本を見せる」傾向（MultiArm・Lifestyle・Expressive は見せたがり）【仮】。</summary>

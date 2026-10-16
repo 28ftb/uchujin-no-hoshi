@@ -10,7 +10,35 @@ namespace Uchujin.World
     {
         // ---- 生成バージョン（村仕様 §1.3：生成済みの星の地形を勝手に変えない） ----
         /// <summary>このコードが生成する地形の版。PlanetInfo.worldGenVersion と比較する。</summary>
-        public const int GeneratorVersion = 1;
+        /// <remarks>1：最初の版（湖なし）。2：マップ設計 v0.2 の設計決定（湖・静かな高台・8m以上の滝と滝の裏の洞・必ず作る桟橋・川の区間・種ごとの検証）。
+        /// 版1で作った星は版1のまま作り直す（地形を勝手に変えない）。</remarks>
+        public const int GeneratorVersion = 2;
+
+        // ---- 生成バージョン2（マップ設計 v0.2 §2）【仮数値】 ----
+        /// <summary>必ず作る滝の最低の落差（m）。</summary>
+        public const float WaterfallMinDrop = 8f;
+        /// <summary>滝つぼを通常の川底より深く掘る量（m）。川の深さ 1.6m と合わせて 3m 以上。</summary>
+        public const float PlungePoolExtraDepth = 2.2f;
+        /// <summary>湖の差し渡しの最低（m）と最深部の最低（m）。</summary>
+        public const float LakeMinDiameter = 90f;
+        public const float LakeMinMaxDepth = 8f;
+        /// <summary>静かな高台から本道・家・見晴らし台までの最低距離（m、高台の中心から）。</summary>
+        public const float QuietRoadClearance = 75f;
+        public const float QuietHouseClearance = 80f;
+        /// <summary>静かな岸（湖・池）から本道・家・見晴らし台までの最低距離（m）。</summary>
+        public const float QuietShoreClearance = 40f;
+        /// <summary>鍛冶屋・修理屋が広場から離れて建つ時の、道のりの上限（m。走って25秒）。</summary>
+        public const float SatelliteMaxPath = 200f;
+        /// <summary>桟橋の先端の位置（海岸線から沖へ何m）。</summary>
+        public const float PierReachV2 = 22f;
+        /// <summary>滝の裏の洞（別エリア）を作る座標（屋外・鉱山から離れた場所）。</summary>
+        public static readonly Vector3 WaterfallCaveOrigin = new Vector3(-6000f, 0f, 6000f);
+        /// <summary>広場から地域の入口（鉱山など）までの道のりの上限（m。走って45秒：マップ設計 §5.5）。</summary>
+        public const float MaxPathRegionV2 = 360f;
+        /// <summary>住宅区画を置ける広場からの距離（湖・静かな高台を避ける分、少し広げる）。</summary>
+        public const float HousePlotMaxDistFromPlazaV2 = 195f;
+        /// <summary>道沿いの住宅区画の間隔（生成バージョン2。湖・静かな高台を避ける分、少し詰める）。</summary>
+        public const float HousePlotSpacingV2 = 12.6f;
 
         // ---- 全体の大きさ（村仕様 §2.1：一つの村とその周辺の密度の高い生活圏） ----
         public const float WorldSize = 400f;
@@ -58,6 +86,9 @@ namespace Uchujin.World
         public const float SatelliteFacilityChance = 0.4f;
         public const int HousePlotTarget = 24;
         public const int HousePlotMinimum = 20;
+        /// <summary>生成バージョン2の住宅区画の最低数と目標（同時居住の上限15人。引っ越しの入れ替わり用に少し空き家を残す）。</summary>
+        public const int HousePlotMinimumV2 = 15;
+        public const int HousePlotTargetV2 = 17;
         public const float HousePlotSpacing = 14f;
         public const float HousePlotRoadOffset = 11f;
         public const float HousePlotMaxDistFromPlaza = 175f;

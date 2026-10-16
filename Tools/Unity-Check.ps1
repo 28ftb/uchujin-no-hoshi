@@ -7,6 +7,8 @@
   -Mode Compile   : Unity をバッチモードで開いてコンパイルし、error CS を一覧にする
   -Mode Smoke     : バッチモード（ウィンドウなし・GPU は使う）で起動スモークテスト（タイトル〜キャラメイク〜プロローグ〜会話〜商店〜睡眠〜セーブ〜ロード）
   -Mode Visual    : 画面ありで同じスモークテストを行い、各段階を Logs/Smoke/*.png に撮影する（見た目の確認用。5〜7分）
+  -Mode SeedAudit : ワールド生成の大量シード検査（再生しない。魚50種・生物50種の生息地・地形の条件・天候の間隔・道のり）。
+                    結果は Logs/WorldAudit/report.md。シード数は -Seeds（既定 200）
 
   Unity の版は ProjectSettings/ProjectVersion.txt に合わせる。違う版の Unity では開かない（プロジェクトが別の版に変換されるため）。
   Unity Editor でこのプロジェクトを開いている間はバッチモードが使えない（同じプロジェクトは同時に1つしか開けない）。
@@ -16,8 +18,9 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('TypeCheck', 'Compile', 'Smoke', 'Visual')][string]$Mode = 'Compile',
+    [ValidateSet('TypeCheck', 'Compile', 'Smoke', 'Visual', 'SeedAudit')][string]$Mode = 'Compile',
     [string]$UnityPath,
+    [int]$Seeds = 200,
     [int]$TimeoutMinutes = 25
 )
 $ErrorActionPreference = 'Stop'
@@ -75,7 +78,9 @@ $unityArgs = switch ($Mode) {
     'Compile' { @('-batchmode', '-quit', '-nographics') }
     'Smoke'   { @('-batchmode') + $smokeArgs }   # -nographics だと URP の RenderTexture（キャラメイクのプレビュー）が作れずエラーになる
     'Visual'  { $smokeArgs }
+    'SeedAudit' { @('-batchmode', '-nographics', '-executeMethod', 'Uchujin.EditorTools.WorldSeedAudit.Run') }
 }
+if ($Mode -eq 'SeedAudit') { $env:UCHUJIN_AUDIT_SEEDS = "$Seeds" }
 $unityArgs += @('-projectPath', "`"$root`"", '-logFile', "`"$log`"")
 Write-Host "Unity $version で $Mode を実行します（ログ: $log）"
 $p = Start-Process -FilePath $UnityPath -ArgumentList $unityArgs -PassThru
@@ -98,6 +103,15 @@ if ($text | Where-Object { $_ -match 'Scripts have compiler errors' }) {
 if ($Mode -eq 'Compile') {
     Write-Host "== OK: コンパイルエラー 0（終了コード $($p.ExitCode)）==" -ForegroundColor Green
     exit $p.ExitCode
+}
+if ($Mode -eq 'SeedAudit') {
+    $audit = $text | Where-Object { $_ -match '^\[AUDIT' }
+    $audit | ForEach-Object { Write-Host $_ }
+    $report = Join-Path $logs 'WorldAudit\report.md'
+    if (-not ($audit | Where-Object { $_ -match '^\[AUDIT\] 終了' })) { Write-Host '== 検査が最後まで進みませんでした（ログを確認）==' -ForegroundColor Red; exit 1 }
+    if ($p.ExitCode -eq 0) { Write-Host "== OK: 問題 0（報告: $report）==" -ForegroundColor Green; exit 0 }
+    Write-Host "== 問題あり（報告: $report）==" -ForegroundColor Red
+    exit 1
 }
 
 $smoke = $text | Where-Object { $_ -match '^\[SMOKE' }

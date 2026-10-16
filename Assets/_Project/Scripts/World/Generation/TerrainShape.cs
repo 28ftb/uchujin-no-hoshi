@@ -25,10 +25,17 @@ namespace Uchujin.World
         public float ForestThreshold;
         public float FlowerThreshold;
         public float ForestScale;
+        /// <summary>生成バージョン（2 から静かな高台が加わる）。</summary>
+        public int Version = 1;
+        /// <summary>静かな高台（生成バージョン2。マップ設計 v0.2 §2.6）：村から遠い、上が平らな高い丘。</summary>
+        public bool HasQuiet;
+        public Vector2 QuietCenter;
+        public float QuietRadius;
+        public float QuietHeight;
 
         private WorldNoise baseN, coastN, ridgeN, forestN, flowerN, rockN, detailN;
 
-        public static TerrainShape Create(ulong seed, string attemptKey, SeededRandom r)
+        public static TerrainShape Create(ulong seed, string attemptKey, SeededRandom r, int version = 1)
         {
             var s = new TerrainShape();
             float ang = r.Range(0f, Mathf.PI * 2f);
@@ -66,6 +73,33 @@ namespace Uchujin.World
                 if (c.magnitude < 45f) continue;
                 s.HillCenter = c;
                 break;
+            }
+
+            // 生成バージョン2：静かな高台（にぎやかな見晴らし台とは別。海から遠く、丘・山から離れた外寄りの場所）
+            s.Version = version;
+            if (version >= 2)
+            {
+                s.QuietRadius = r.Range(24f, 30f);
+                s.QuietHeight = r.Range(17f, 22f);
+                for (int pass = 0; pass < 3 && !s.HasQuiet; pass++)
+                {
+                    float hillGap = pass == 0 ? 115f : pass == 1 ? 100f : 85f;
+                    float minFromCenter = pass == 0 ? 95f : pass == 1 ? 80f : 65f;
+                    for (int i = 0; i < 300; i++)
+                    {
+                        var c = new Vector2(r.Range(-150f, 150f), r.Range(-150f, 150f));
+                        float lim = WorldTuning.Half - s.QuietRadius - 28f;
+                        if (Mathf.Abs(c.x) > lim || Mathf.Abs(c.y) > lim) continue;
+                        if (s.CoastD(c.x, c.y) < 90f) continue;
+                        if (Vector2.Distance(c, s.HillCenter) < hillGap) continue;
+                        if (c.magnitude < minFromCenter) continue;
+                        // 山からも離す（鉱山への本道が静かな高台の近くを通らないように）
+                        if (Vector2.Distance(c, s.MountainCenter) < s.MountainRadius * (pass == 2 ? 1.1f : 1.3f) + s.QuietRadius) continue;
+                        s.QuietCenter = c;
+                        s.HasQuiet = true;
+                        break;
+                    }
+                }
             }
             return s;
         }
@@ -114,6 +148,13 @@ namespace Uchujin.World
             // 高台（上が平らな丘）
             float dh = Vector2.Distance(p, HillCenter) / HillRadius;
             if (dh < 1.3f) h += HillHeight * (1f - GeoUtil.SmoothStep(0.32f, 1.15f, dh));
+
+            // 静かな高台（上が広く平らで、木立・草地・小さな池を置ける）
+            if (HasQuiet)
+            {
+                float dq = Vector2.Distance(p, QuietCenter) / QuietRadius;
+                if (dq < 1.35f) h += QuietHeight * (1f - GeoUtil.SmoothStep(0.6f, 1.25f, dq));
+            }
 
             // 内陸側の外周は丘で囲む（ワールドの外の景色）
             float edge = WorldTuning.Half - Mathf.Max(Mathf.Abs(x), Mathf.Abs(z));

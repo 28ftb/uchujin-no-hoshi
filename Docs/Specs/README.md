@@ -31,6 +31,7 @@
 | 宇宙人の星 — タブレット・宇宙語辞書・住民辞典システム仕様案 v0.3 | `specs/uchujin_no_hoshi_tablet_dictionary_residents_spec_v0_3.md` |
 | 宇宙人の星 — 時間・天候・暦システム仕様案 v0.2 | `specs/uchujin_no_hoshi_time_weather_spec_v0_2.md` |
 | 宇宙人の星 — 村・マップ・ワールド生成システム仕様案 v0.3 | `specs/uchujin_no_hoshi_village_map_spec_v0_3.md` |
+| 『宇宙人の星』宇宙魚50種類 デザイン・生態・釣り方仕様案 v0.2（魚の正。2026-10-16 にモデル制作用の原本 `Fish/design/` から取り込み） | `uchujin_no_hoshi_fish_50_design_v0_2.md`（データ：`uchujin_no_hoshi_fish_50_v0_2.json`） |
 
 ## 過去版
 

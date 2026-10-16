@@ -1,5 +1,7 @@
 # Residents（住民）モジュール
 
+> **2026-10-16 の変更**：ユーザーの指定で、初期住民10人・同時居住の上限15人（初期＋引っ越しで5人まで増える。`ResidentTuning`）。静かな高台（`AreaRegion.quiet`）は住民の行き先に選ばない（`WorldLayout.GetVisitableAreas`。星の光帯の夜も見晴らし台へ行く）。
+
 `Uchujin.Residents.ResidentSystem : GameSystemBase, IResidentDirectory`（SaveKey `"residents"`、DailyUpdateOrder 400）
 
 かわいい宇宙人10系統の住民を生成し、1日の生活・仕事・買い物・交流・引っ越しを行わせ、主人公とは宇宙語（意味データ）と身振りで交流させる。

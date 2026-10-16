@@ -133,33 +133,45 @@ namespace Uchujin.Fishing
         private Utterance BuildHintUtterance(PlayerState player, string residentId)
         {
             int day = sys.CurrentDay;
-            // 修理用の魚をまだ釣っていなければ、その手掛かりを日替わりで話す（低確率待ちにしないための住民の情報 §10）
-            bool hasFrost = sys.FindLog(SharedItemIds.FishFrostFin) != null;
-            bool hasRipple = sys.FindLog(SharedItemIds.FishRippleEye) != null;
-            bool talkRocket = (!hasFrost || !hasRipple) && (day % 2 == 0);
+            // 修理用の魚（候補のどれか）をまだ釣っていなければ、その手掛かりを日替わりで話す（低確率待ちにしないための住民の情報 §10）
+            bool hasCooling = HasAny(SharedItemIds.FishCoolingCandidates);
+            bool hasSensor = HasAny(SharedItemIds.FishSensorCandidates);
+            bool talkRocket = (!hasCooling || !hasSensor) && (day % 2 == 0);
             if (talkRocket)
             {
-                bool frost = !hasFrost && (hasRipple || day % 4 == 0);
-                if (frost)
+                bool cooling = !hasCooling && (hasSensor || day % 4 == 0);
+                if (cooling)
                 {
-                    var spot = FindSpotWithTags(new[] { "waterfall", "deep", "cold", "rocky" }, FishWater.River | FishWater.Pond);
-                    var u = new Utterance(residentId, "fishing.hint.frostfin").Related(SharedItemIds.FishFrostFin)
-                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.EXIST).Agent(MeaningArg.Of(Concepts.Item(SharedItemIds.FishFrostFin), Concepts.BLUE))
-                            .At(spot != null ? spot.WaterConcept() : Concepts.RIVER).When(Concepts.MORNING))
-                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.LIKE).Agent(Concepts.Item(SharedItemIds.FishFrostFin)).Patient(MeaningArg.Of(Concepts.WATER, Concepts.COLD)))
+                    // 冷却膜：冷たい湧き水の淵のシモマダラ（地上・天候なし。マップ設計 v0.2 §2.2 の保証）
+                    string id = SharedItemIds.FishShimomadara;
+                    var spot = FindSpotFor(id) ?? FindSpotWithTags(new[] { "spring", "cold", "pool" }, FishWater.River | FishWater.Pond);
+                    var u = new Utterance(residentId, "fishing.hint.cooling").Related(id)
+                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.EXIST).Agent(MeaningArg.Of(Concepts.Item(id), Concepts.BLUE))
+                            .At(spot != null ? spot.WaterConcept() : Concepts.RIVER))
+                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.LIKE).Agent(Concepts.Item(id)).Patient(MeaningArg.Of(Concepts.WATER, Concepts.COLD)))
                         .Face(Expression.Thinking).With(Gesture.Shiver);
                     if (spot != null) u.With(Gesture.PointAt, spot.Id);
                     return u;
                 }
-                if (!hasRipple)
+                if (!hasSensor)
                 {
-                    var spot = FindSpotWithTags(new[] { "deep" }, FishWater.Sea | FishWater.Pond);
-                    var u = new Utterance(residentId, "fishing.hint.rippleeye").Related(SharedItemIds.FishRippleEye)
-                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.EXIST).Agent(Concepts.Item(SharedItemIds.FishRippleEye))
-                            .At(spot != null ? spot.WaterConcept() : Concepts.SEA).When(Concepts.NIGHT))
-                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.BLOW).Agent(Concepts.WIND).Not())
-                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.LIKE).Agent(Concepts.Item(SharedItemIds.FishRippleEye)).Patient(Concepts.MUSIC))
-                        .Face(Expression.Thinking).With(Gesture.LookUp);
+                    // 振動センサー：日替わりで、静かな岸のオトナシ／早瀬・海のサザナミメの話をする
+                    bool quietOne = (day / 2) % 2 == 0;
+                    string id = quietOne ? SharedItemIds.FishOtonashi : SharedItemIds.FishSazanamime;
+                    var spot = FindSpotFor(id);
+                    if (spot == null)
+                    {
+                        id = quietOne ? SharedItemIds.FishSazanamime : SharedItemIds.FishOtonashi;
+                        quietOne = !quietOne;
+                        spot = FindSpotFor(id);
+                    }
+                    var u = new Utterance(residentId, "fishing.hint.sensor").Related(id)
+                        .Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.EXIST).Agent(Concepts.Item(id))
+                            .At(spot != null ? spot.WaterConcept() : Concepts.RIVER))
+                        .Say(quietOne
+                            ? MeaningFrame.Make(SpeechAct.Statement, Concepts.LIKE).Agent(Concepts.Item(id)).Patient(Concepts.QUIET)
+                            : MeaningFrame.Make(SpeechAct.Statement, Concepts.LIKE).Agent(Concepts.Item(id)).Patient(MeaningArg.Of(Concepts.WATER, Concepts.FAST)))
+                        .Face(Expression.Thinking).With(quietOne ? Gesture.LookUp : Gesture.Shiver);
                     if (spot != null) u.With(Gesture.PointAt, spot.Id);
                     return u;
                 }
@@ -199,6 +211,34 @@ namespace Uchujin.Fishing
                     utt.Say(MeaningFrame.Make(SpeechAct.Statement, Concepts.EXIST).Agent(MeaningArg.Of(Concepts.FISH, Concepts.BIG)).At(big.WaterConcept()).Adverb(Concepts.ALSO));
             }
             return utt;
+        }
+
+        private bool HasAny(string[] ids)
+        {
+            foreach (var id in ids) if (sys.FindLog(id) != null) return true;
+            return false;
+        }
+
+        /// <summary>その魚が住める地上の釣り場（広場に一番近いもの）。</summary>
+        private SpotInfo FindSpotFor(string fishId)
+        {
+            var f = FishCatalog.Get(fishId);
+            if (f == null) return null;
+            var layout = Game.Instance != null ? Game.Instance.Layout : null;
+            var plaza = layout?.GetFacility(Uchujin.World.FacilityType.Plaza);
+            SpotInfo best = null;
+            float bestD = float.MaxValue;
+            foreach (var s in sys.Spawn.Spots)
+            {
+                if (s.IsUnderground || !FishSpawnModel.CanLiveIn(f, s)) continue;
+                float d = plaza != null ? Vector3.Distance(plaza.position, s.StandPosition) : 0f;
+                if (d < bestD)
+                {
+                    bestD = d;
+                    best = s;
+                }
+            }
+            return best;
         }
 
         private SpotInfo FindSpotWithTags(string[] tags, FishWater waters)

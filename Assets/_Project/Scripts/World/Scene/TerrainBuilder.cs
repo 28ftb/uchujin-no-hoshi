@@ -394,6 +394,7 @@ namespace Uchujin.World
             sea.transform.SetParent(root.transform, true);
             foreach (var rv in W.Rivers) BuildRiverMesh(root.transform, rv);
             foreach (var pd in W.Ponds) BuildPondMesh(root.transform, pd);
+            foreach (var lk in W.Lakes) BuildLakeMesh(root.transform, lk);
             if (W.Waterfall != null) BuildWaterfall(root.transform, W.Waterfall);
         }
 
@@ -500,6 +501,39 @@ namespace Uchujin.World
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var mr = go.AddComponent<MeshRenderer>();
             mr.sharedMaterial = MaterialCache.Get(P.Pond, 0.85f);
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+        }
+
+        /// <summary>湖の水面（岸に沿って波打つ形。岬の陸は水面より高いので上に見える）。</summary>
+        private void BuildLakeMesh(Transform parent, LakeInfo lk)
+        {
+            int seg = 72;
+            float y = lk.Surface + 0.02f;
+            var verts = new List<Vector3> { new Vector3(lk.Center.x, y, lk.Center.y) };
+            var tris = new List<int>();
+            for (int i = 0; i <= seg; i++)
+            {
+                float a = i / (float)seg * Mathf.PI * 2f;
+                float r = lk.RadiusAt(a) + 0.8f;
+                verts.Add(new Vector3(lk.Center.x + Mathf.Cos(a) * r, y, lk.Center.y + Mathf.Sin(a) * r));
+                if (i > 0)
+                {
+                    tris.Add(0); tris.Add(i + 1); tris.Add(i);
+                }
+            }
+            FixUp(verts, tris);
+            var norms = new List<Vector3>();
+            foreach (var _ in verts) norms.Add(Vector3.up);
+            var mesh = new Mesh { name = "Lake" };
+            mesh.SetVertices(verts);
+            mesh.SetNormals(norms);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateBounds();
+            var go = new GameObject("Lake");
+            go.transform.SetParent(parent, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = MaterialCache.Get(Color.Lerp(P.Pond, P.DeepSea, 0.35f), 0.85f);
             mr.shadowCastingMode = ShadowCastingMode.Off;
         }
 

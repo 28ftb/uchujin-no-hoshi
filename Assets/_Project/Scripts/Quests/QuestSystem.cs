@@ -158,7 +158,7 @@ namespace Uchujin.Quests
             if (l == null) return Vector3.zero;
             var f = l.GetFacility(FacilityType.Lookout);
             if (f != null) return Ground(f.position);
-            foreach (var a in l.GetAreas(AreaType.Hill)) return Ground(a.center);
+            foreach (var a in l.GetVisitableAreas(AreaType.Hill)) return Ground(a.center);
             foreach (var a in l.GetAreas(AreaType.Mountain)) return Ground(a.center);
             return PlazaPos() + new Vector3(12f, 0f, 12f);
         }

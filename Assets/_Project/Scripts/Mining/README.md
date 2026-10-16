@@ -1,5 +1,7 @@
 # 鉱山モジュール（Uchujin.Mining）
 
+> **2026-10-16 の変更（マップ設計 v0.2 §2.11）**：地下湖の釣り場は `MiningSystem.LakeSpot`（ワールド生成の検査ツールも使う）。魚50種の生息条件に合わせて、岸のタグに 浅い岸 `shore_shallow`（〜4階）・鉱石の多い岸 `ore_shore`（4〜8階）・最深部 `deepest`（最下階）を足した（従来の cold / deep / crystal はそのまま）。
+
 `Uchujin.Mining.MiningSystem : GameSystemBase, IMiningService`（SaveKey `"mining"`、DailyUpdateOrder 100）。
 仕様：`uchujin_no_hoshi_mining_spec_v0_4.md`（以下 §）、時間天候 §4.3【決定】、ロケット §4、バランス §9.2、マルチ §8、宇宙語 §9.3。
 

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Uchujin.World
 {
-    public enum WaterKind : byte { None = 0, River = 1, Pond = 2, Sea = 3 }
+    public enum WaterKind : byte { None = 0, River = 1, Pond = 2, Sea = 3, Lake = 4 }
 
     /// <summary>
     /// 高さグリッド（地形の正本）。WorldLayout.HeightSampler / WaterTester はこれを参照する。
@@ -95,6 +95,13 @@ namespace Uchujin.World
             if (float.IsNaN(w)) return false;
             if (w <= SampleTerrain(x, z) + 0.05f) return false;
             return !OnBridge(x, z);
+        }
+
+        /// <summary>水深（水面 − 地形。水でなければ 0）。</summary>
+        public float WaterDepth(float x, float z)
+        {
+            if (!IsWater(x, z)) return 0f;
+            return Mathf.Max(0f, WaterSurfaceAt(x, z) - SampleTerrain(x, z));
         }
 
         public WaterKind KindAt(float x, float z)

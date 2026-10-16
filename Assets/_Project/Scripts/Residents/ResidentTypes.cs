@@ -86,11 +86,11 @@ namespace Uchujin.Residents
     {
         // ---- 人数・引っ越し（住民生活仕様 §18、バランス §12.2） ----
         /// <summary>初期住民数（仮。住宅区画が足りなければ区画数-1 まで減らす）。</summary>
-        public const int InitialResidentCount = 16;
+        public const int InitialResidentCount = 10;
         /// <summary>初期住民の後、引っ越して来て増える目標人数（初期＋この数まで増える）。</summary>
-        public const int PopulationGrowth = 3;
+        public const int PopulationGrowth = 5; // 初期10人＋5人＝最大15人まで増える
         /// <summary>同時居住の上限。</summary>
-        public const int MaxResidents = 26;
+        public const int MaxResidents = 15;
         /// <summary>最初の新住民が引っ越してくる日（第2章「村の新しい住民」を序盤に1回起こす）。</summary>
         public const int FirstNewcomerDay = 4;
         /// <summary>空きができてから新住民が来るまでの日数の範囲。</summary>

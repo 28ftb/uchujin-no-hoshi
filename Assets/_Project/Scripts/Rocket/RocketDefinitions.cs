@@ -443,7 +443,7 @@ namespace Uchujin.Rocket
             AddHint(SharedItemIds.PartCoolingMembrane,
                 "温度差に強い膜", "A membrane that tolerates temperature differences",
                 "温度差に強い膜を持つ水中の生物素材を、洗って加工する", "Wash and shape a membrane from an aquatic creature that resists temperature change",
-                SharedItemIds.FishFrostFin, SourceKind.Fishing, SourceKind.Processing);
+                SharedItemIds.FishShimomadara, SourceKind.Fishing, SourceKind.Processing);
             AddHint(SharedItemIds.FuelStarHoney,
                 "高いエネルギーを蓄えた液体燃料", "A liquid fuel holding a lot of energy",
                 "エネルギーを蓄える植物の実を、圧搾・発酵・加熱で精製する（生物の力を借りられる）", "Refine an energy-rich fruit by pressing, fermenting and heating (creatures can help)",
@@ -459,7 +459,7 @@ namespace Uchujin.Rocket
             AddHint(SharedItemIds.PartRippleSensor,
                 "空間の揺らぎを感じ取る感覚素材", "A sensory material that feels ripples in space",
                 "波や揺らぎを感じる器官を持つ、珍しい水中の生物素材を精密加工する", "Precisely process an organ from a rare aquatic creature that senses ripples",
-                SharedItemIds.FishRippleEye, SourceKind.Fishing, SourceKind.Processing);
+                SharedItemIds.FishSazanamime, SourceKind.Fishing, SourceKind.Processing);
 
             // 購入部品
             foreach (var p in PurchasedParts)
@@ -475,8 +475,10 @@ namespace Uchujin.Rocket
             AddHint(SharedItemIds.OreSturdyMetal, "丈夫な金属を含む鉱物", "A mineral with sturdy metal", "鉱山の中ほどの階", "Middle mine floors", null, SourceKind.Mining);
             AddHint(SharedItemIds.OreHeatproofMetal, "熱に強い金属を含む鉱物", "A mineral with heat-resistant metal", "鉱山の深い階", "Deep mine floors", null, SourceKind.Mining);
             AddHint(SharedItemIds.OreEnergyCrystal, "エネルギーを蓄えた結晶", "An energy-storing crystal", "鉱山の最深部", "The deepest mine floors", null, SourceKind.Mining);
-            AddHint(SharedItemIds.FishFrostFin, "温度差に強い膜を持つ水中の生き物", "An aquatic creature with a temperature-proof membrane", "水辺で釣れそう", "Probably caught at the water", null, SourceKind.Fishing);
-            AddHint(SharedItemIds.FishRippleEye, "揺らぎを感じる器官を持つ珍しい水中の生き物", "A rare aquatic creature that senses ripples", "水辺で釣れそう（時間や天気で変わるかも）", "Probably caught at the water (time or weather may matter)", null, SourceKind.Fishing);
+            foreach (var id in SharedItemIds.FishCoolingCandidates)
+                AddHint(id, "温度差に強い膜を持つ水中の生き物", "An aquatic creature with a temperature-proof membrane", "冷たい水辺で釣れそう", "Probably caught near cold water", null, SourceKind.Fishing);
+            foreach (var id in SharedItemIds.FishSensorCandidates)
+                AddHint(id, "揺らぎを感じる器官を持つ水中の生き物", "An aquatic creature that senses ripples", "水辺で釣れそう（場所や時間で変わるかも）", "Probably caught at the water (place or time may matter)", null, SourceKind.Fishing);
             AddHint(SharedItemIds.CropStarHoneyFruit, "エネルギーを蓄える植物の実", "An energy-storing fruit", "畑で育てられそう", "Probably grown on a farm", null, SourceKind.Farming);
         }
 
@@ -487,11 +489,16 @@ namespace Uchujin.Rocket
         {
             ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.wire", InputItemId = SharedItemIds.OreConductive, InputCount = 2, Fee = 150, OutputItemId = SharedItemIds.PartConductiveWire, OutputCount = 1, Days = 1 });
             ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.hull", InputItemId = SharedItemIds.OreSturdyMetal, InputCount = 3, Fee = 400, OutputItemId = SharedItemIds.PartHullPlate, OutputCount = 1, Days = 1 });
-            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.membrane", InputItemId = SharedItemIds.FishFrostFin, InputCount = 1, Fee = 500, OutputItemId = SharedItemIds.PartCoolingMembrane, OutputCount = 1, Days = 1 });
+            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.membrane", InputItemId = SharedItemIds.FishShimomadara, InputCount = 2, Fee = 500, OutputItemId = SharedItemIds.PartCoolingMembrane, OutputCount = 1, Days = 1 });
+            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.membrane.fine", InputItemId = SharedItemIds.FishHiyashiuo, InputCount = 1, Fee = 500, OutputItemId = SharedItemIds.PartCoolingMembrane, OutputCount = 1, Days = 1 });
             ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.fuel", InputItemId = SharedItemIds.CropStarHoneyFruit, InputCount = 3, Fee = 300, OutputItemId = SharedItemIds.FuelStarHoney, OutputCount = 1, Days = 1 });
             ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.frame", InputItemId = SharedItemIds.OreHeatproofMetal, InputCount = 3, Fee = 900, OutputItemId = SharedItemIds.PartHeatproofFrame, OutputCount = 1, Days = 1 });
             ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.core", InputItemId = SharedItemIds.OreEnergyCrystal, InputCount = 2, Fee = 1500, OutputItemId = SharedItemIds.PartCrystalCore, OutputCount = 1, Days = 2 });
-            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.sensor", InputItemId = SharedItemIds.FishRippleEye, InputCount = 1, Fee = 1800, OutputItemId = SharedItemIds.PartRippleSensor, OutputCount = 1, Days = 2 });
+            // 振動センサー：候補魚4種のどれでも頼める（魚50種原本 §9.1）
+            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.sensor", InputItemId = SharedItemIds.FishSazanamime, InputCount = 1, Fee = 1800, OutputItemId = SharedItemIds.PartRippleSensor, OutputCount = 1, Days = 2 });
+            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.sensor.otonashi", InputItemId = SharedItemIds.FishOtonashi, InputCount = 1, Fee = 1800, OutputItemId = SharedItemIds.PartRippleSensor, OutputCount = 1, Days = 2 });
+            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.sensor.hamoriuo", InputItemId = SharedItemIds.FishHamoriuo, InputCount = 1, Fee = 1800, OutputItemId = SharedItemIds.PartRippleSensor, OutputCount = 1, Days = 2 });
+            ProxyRecipes.Add(new ProxyRecipe { Id = "proxy.sensor.iwanaki", InputItemId = SharedItemIds.FishIwanaki, InputCount = 1, Fee = 1800, OutputItemId = SharedItemIds.PartRippleSensor, OutputCount = 1, Days = 2 });
         }
 
         public static string StatusLabel(DeviceStatus s)

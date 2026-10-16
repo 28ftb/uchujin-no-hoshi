@@ -57,10 +57,12 @@ namespace Uchujin.World
 
         public override void PreparePlanet(PlanetContext ctx)
         {
-            if (ctx.Planet.worldGenVersion != WorldTuning.GeneratorVersion)
-                Debug.LogWarning($"[World] この星の生成バージョン {ctx.Planet.worldGenVersion} と現在の生成コード {WorldTuning.GeneratorVersion} が異なります（地形が変わる可能性があります）。");
+            // 星に保存された生成バージョンで作る（版1の星は版1のまま。村仕様 §1.3：生成済みの星の地形を勝手に変えない）
+            int version = Mathf.Clamp(ctx.Planet.worldGenVersion, 1, WorldTuning.GeneratorVersion);
+            if (ctx.Planet.worldGenVersion > WorldTuning.GeneratorVersion)
+                Debug.LogWarning($"[World] この星の生成バージョン {ctx.Planet.worldGenVersion} は、このゲームの生成コード（{WorldTuning.GeneratorVersion}）より新しいです。版{version}で作ります（地形が違う可能性があります）。");
             GeneratedWorld g = null;
-            try { g = WorldGenerator.Generate(ctx.Seed); }
+            try { g = WorldGenerator.Generate(ctx.Seed, version); }
             catch (Exception e) { Debug.LogError("[World] 生成に失敗: " + e); }
             if (g == null) g = FallbackWorld.Create(ctx.Seed);
             Generated = g;
@@ -77,7 +79,7 @@ namespace Uchujin.World
 
         private WorldPlanetState NewState()
         {
-            var s = new WorldPlanetState { generatorVersion = WorldTuning.GeneratorVersion };
+            var s = new WorldPlanetState { generatorVersion = Generated != null ? Generated.Version : WorldTuning.GeneratorVersion };
             if (Generated != null)
                 foreach (var site in Generated.ProjectSites) s.projects.Add(new ProjectProgress { id = site.Id });
             return s;
@@ -145,6 +147,16 @@ namespace Uchujin.World
             BuildFogTexture();
 
             RegisterOverworld();
+            // 滝の裏の洞（生成バージョン2）
+            if (g.Cave != null)
+            {
+                try
+                {
+                    WaterfallCaveBuilder.Build(worldRoot, g);
+                    WaterfallCaveBuilder.RegisterArea();
+                }
+                catch (Exception e) { Debug.LogError("[World] 滝の裏の洞の生成に失敗: " + e); }
+            }
         }
 
         private void RegisterOverworld()
@@ -719,7 +731,7 @@ namespace Uchujin.World
         {
             if (scope == SaveScope.Planet)
             {
-                state.generatorVersion = WorldTuning.GeneratorVersion;
+                state.generatorVersion = Generated != null ? Generated.Version : WorldTuning.GeneratorVersion;
                 state.wear = wear.Pack();
                 return JsonUtility.ToJson(state);
             }

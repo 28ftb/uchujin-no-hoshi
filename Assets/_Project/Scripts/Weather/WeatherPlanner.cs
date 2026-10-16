@@ -27,6 +27,8 @@ namespace Uchujin.Weather
         public List<DayPlan> days = new List<DayPlan>();
         /// <summary>現象ごとに最後に起きた日（ClimateProfile.Kinds の順）。</summary>
         public List<int> lastPhenomenonDay = new List<int>();
+        /// <summary>天候の条件ごとに最後に起きた日（WeatherPlanner.Conditions の順。最低頻度の保証用）。</summary>
+        public List<int> lastConditionDay = new List<int>();
         public int generatedThrough;
     }
 
@@ -52,6 +54,8 @@ namespace Uchujin.Weather
         {
             if (State.lastPhenomenonDay == null) State.lastPhenomenonDay = new List<int>();
             while (State.lastPhenomenonDay.Count < ClimateProfile.Kinds.Length) State.lastPhenomenonDay.Add(0);
+            if (State.lastConditionDay == null) State.lastConditionDay = new List<int>();
+            while (State.lastConditionDay.Count < ConditionCount) State.lastConditionDay.Add(0);
             if (State.days == null) State.days = new List<DayPlan>();
         }
 
@@ -142,8 +146,116 @@ namespace Uchujin.Weather
                 plan.segments.Add(new WeatherSegment { startMinute = starts[i], state = cur });
             }
             AddPhenomena(plan, day, r);
+            GuaranteeConditions(plan, day);
             Merge(plan);
             return plan;
+        }
+
+        // =================================================================
+        // 天候の最低頻度（マップ設計 v0.2 §8.5）
+        // 雨の魚・霧の魚・強風の魚・無風の伝説魚・荒天の伝説魚・晴れた夜の生き物などが、星の気候のせいで会えなくならないよう、
+        // 条件ごとに間隔の上限を決め、超えそうな日は決まった時間帯にその天気を入れる（宇宙固有現象の最大間隔と同じ考え方）。
+        // =================================================================
+
+        private const int CondRain = 0, CondClearDay = 1, CondStrongWind = 2, CondFog = 3, CondCalm = 4, CondStorm = 5, CondClearNight = 6;
+        private const int ConditionCount = 7;
+
+        private void GuaranteeConditions(DayPlan plan, int day)
+        {
+            EnsureCounters();
+            if (day <= 1) return; // 1日目（不時着の日）は穏やかなまま
+            var gaps = WeatherTuning.ConditionMaxGap;
+            bool[] force = new bool[ConditionCount];
+            for (int c = 0; c < ConditionCount; c++)
+            {
+                if (Occurs(plan, c)) continue;
+                int gap = day - State.lastConditionDay[c];
+                if (gap >= gaps[Mathf.Min(c, gaps.Length - 1)]) force[c] = true;
+            }
+            if (force[CondStorm]) force[CondRain] = false; // 荒天は雨でもある
+            if (force[CondFog])
+                SetRange(plan, 5 * 60, 8 * 60, s =>
+                {
+                    s.visibility = VisibilityLevel.LightFog;
+                    s.wind = WindLevel.Calm;
+                    if (s.precipitation > Precipitation.Drizzle) s.precipitation = Precipitation.Drizzle;
+                    return s;
+                });
+            if (force[CondCalm])
+                SetRange(plan, force[CondFog] ? 5 * 60 : 18 * 60, force[CondFog] ? 8 * 60 : 20 * 60, s =>
+                {
+                    s.wind = WindLevel.Calm;
+                    if (s.precipitation > Precipitation.Drizzle) s.precipitation = Precipitation.None;
+                    return s;
+                });
+            if (force[CondClearDay])
+                SetRange(plan, 9 * 60, 13 * 60, s =>
+                {
+                    s.sky = SkyState.Sunny;
+                    s.precipitation = Precipitation.None;
+                    if (s.visibility == VisibilityLevel.DenseFog) s.visibility = VisibilityLevel.Normal;
+                    return s;
+                });
+            if (force[CondStrongWind])
+                SetRange(plan, 11 * 60, 14 * 60, s =>
+                {
+                    s.wind = WindLevel.Strong;
+                    s.visibility = VisibilityLevel.Normal;
+                    return s;
+                });
+            if (force[CondRain])
+                SetRange(plan, 14 * 60, 17 * 60, s =>
+                {
+                    if (s.sky < SkyState.Cloudy) s.sky = SkyState.Overcast;
+                    s.precipitation = Precipitation.Rain;
+                    return s;
+                });
+            if (force[CondStorm])
+                SetRange(plan, 15 * 60, 17 * 60 + 30, s =>
+                {
+                    s.sky = SkyState.Overcast;
+                    s.precipitation = Precipitation.HeavyRain;
+                    s.wind = WindLevel.Strong;
+                    s.visibility = VisibilityLevel.Normal;
+                    return s;
+                });
+            if (force[CondClearNight])
+                SetRange(plan, 21 * 60, 1440, s =>
+                {
+                    if (s.sky > SkyState.Sunny) s.sky = SkyState.Clear;
+                    s.precipitation = Precipitation.None;
+                    s.visibility = VisibilityLevel.Normal;
+                    return s;
+                });
+            for (int c = 0; c < ConditionCount; c++)
+                if (Occurs(plan, c)) State.lastConditionDay[c] = day;
+        }
+
+        /// <summary>
+        /// その日に条件が「1時間以上続けて」成り立つか（30分だけの荒天などは数えない。遊ぶ側が出会える長さにする）。
+        /// 晴れ（昼）は 7〜17時、晴れた夜は 21〜24時と 0〜4時の中で数える。
+        /// </summary>
+        private static bool Occurs(DayPlan plan, int cond)
+        {
+            int run = 0;
+            for (int m = 0; m < 1440; m += 30)
+            {
+                var s = StateAt(plan, m);
+                bool ok;
+                switch (cond)
+                {
+                    case CondRain: ok = s.IsRaining; break;
+                    case CondClearDay: ok = m >= 7 * 60 && m < 17 * 60 && s.sky <= SkyState.Sunny && !s.IsRaining; break;
+                    case CondStrongWind: ok = s.wind == WindLevel.Strong; break;
+                    case CondFog: ok = s.IsFoggy; break;
+                    case CondCalm: ok = s.wind == WindLevel.Calm && s.precipitation <= Precipitation.Drizzle; break;
+                    case CondStorm: ok = s.wind == WindLevel.Strong && s.precipitation >= Precipitation.Rain; break;
+                    default: ok = (m >= 21 * 60 || m < 4 * 60) && ((s.sky <= SkyState.Sunny && !s.IsRaining) || s.Has(AlienPhenomenon.StarBand)); break;
+                }
+                run = ok ? run + 30 : 0;
+                if (run >= 60) return true;
+            }
+            return false;
         }
 
         private WeatherState Recalc(WeatherState s, int minute, int day, SeededRandom r)

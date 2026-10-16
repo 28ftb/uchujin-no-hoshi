@@ -252,6 +252,7 @@ namespace Uchujin.World
                 AddNature(NatureKind.Crystal, p, r.Range(0f, 360f), r.Range(0.6f, 1.3f), r.Range(0, 3));
                 MarkSpacing(p);
             }
+            if (V2) PlaceHighlandNature();
         }
 
         // =================================================================
@@ -310,6 +311,7 @@ namespace Uchujin.World
                     if (rv.EndsInSea && u > 0.88f) spot.tags.Add("estuary");
                     if (S.IsForest(stand.x, stand.y)) spot.tags.Add("forest");
                     if (F.Roughness(stand.x, stand.y, 3f) > 1.8f) spot.tags.Add("rocky");
+                    if (V2) TagRiverSpotV2(spot, rv, ri, i, nrm);
                     n++;
                 }
             }
@@ -340,6 +342,7 @@ namespace Uchujin.World
                     else spot.tags.Add("shallow");
                     if (S.IsForest(stand.x, stand.y) || S.Forest01(pd.Center.x, pd.Center.y) > S.ForestThreshold - 0.05f) spot.tags.Add("forest");
                     if (Vector2.Distance(pd.Center, plaza) < 80f) spot.tags.Add("village");
+                    if (V2) TagPondSpotV2(spot, pi, k);
                 }
             }
 
@@ -374,6 +377,14 @@ namespace Uchujin.World
                 spot2.standPosition = new Vector3(spot2.standPosition.x, W.PierStart.y + 0.35f, spot2.standPosition.z);
                 spot2.tags.Add("sea");
                 spot2.tags.Add("pier");
+            }
+            if (V2)
+            {
+                BuildLakeSpotsV2();
+                TagSeaSpotsV2();
+                GuaranteeRiverSectionsV2();
+                TagQuietV2();
+                AddCaveSpotV2();
             }
         }
 
@@ -541,6 +552,7 @@ namespace Uchujin.World
                 AddArea("area.coast." + cn++, AreaType.Coast, p, 32f, ja + (rocky ? "の岩場" : "の浜辺"), en + (rocky ? " rocky shore" : " beach"));
             }
             if (W.HasPier) AddArea("area.pier", AreaType.Coast, GeoUtil.XZ(W.PierStart), 14f, "桟橋", "Pier");
+            if (V2) BuildAreasV2();
         }
 
         // =================================================================
@@ -675,6 +687,7 @@ namespace Uchujin.World
                 AddHabitat(OnGround(p), "field");
             }
             AddHabitat(OnGround(W.PlazaLandmark), "tree");
+            if (V2) BuildHabitatsV2();
         }
 
         // =================================================================
@@ -732,23 +745,27 @@ namespace Uchujin.World
             }
 
             CheckPath(FacilityType.PlayerHouse, WorldTuning.MaxPathHomeToPlaza);
-            CheckPath(FacilityType.MineEntrance, WorldTuning.MaxPathPlazaToMine);
+            // 生成バージョン2は湖と静かな高台を避けて回り込むので、地域の入口までの上限（走って45秒＝約360m：マップ設計 §5.5）を使う
+            CheckPath(FacilityType.MineEntrance, V2 ? WorldTuning.MaxPathRegionV2 : WorldTuning.MaxPathPlazaToMine);
             CheckPath(FacilityType.RocketSite, WorldTuning.MaxPathPlazaToCrash);
             CheckPath(FacilityType.FishingHut, WorldTuning.MaxPathPlazaToFishingHut);
 
-            if (L.HousePlots.Count < WorldTuning.HousePlotMinimum) W.Notes.Add("住宅区画が少ない");
+            if (L.HousePlots.Count < (V2 ? WorldTuning.HousePlotMinimumV2 : WorldTuning.HousePlotMinimum)) W.Notes.Add("住宅区画が少ない");
             if (L.FishingSpots.Count < WorldTuning.MinFishingSpots) W.Notes.Add("釣り場が少ない: " + L.FishingSpots.Count);
             if (L.HabitatPoints.Count < WorldTuning.MinHabitatPoints) W.Notes.Add("生息地点が少ない: " + L.HabitatPoints.Count);
             if (RectHasWater(L.FarmRect, 0f)) W.Notes.Add("農場に水がある");
             if (RectRoughness(L.FarmRect) > 1.2f) W.Notes.Add("農場が平らでない");
             if (L.IsWater(L.PlayerSpawn)) W.Notes.Add("開始地点が水の中");
+            if (V2) ValidateV2();
 
             W.Valid = W.Notes.Count == 0;
             if (!W.Valid && relaxed)
             {
-                // 最後の試行：致命的でない問題は許容する
+                // 最後の試行：致命的でない問題は許容する（生成バージョン2では湖・桟橋・滝・静かな高台が無いのも致命的）
                 bool fatal = false;
-                foreach (var note in W.Notes) if (note.StartsWith("施設なし") || note.StartsWith("道でつながらない")) fatal = true;
+                foreach (var note in W.Notes)
+                    if (note.StartsWith("施設なし") || note.StartsWith("道でつながらない")
+                        || note == "湖なし" || note == "桟橋なし" || note == "8m以上の滝なし" || note == "静かな高台なし") fatal = true;
                 W.Valid = !fatal;
             }
         }

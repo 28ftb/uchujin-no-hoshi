@@ -736,7 +736,7 @@ namespace Uchujin.Residents
                 {
                     var look = layout.GetFacility(FacilityType.Lookout);
                     if (look != null) return look.position;
-                    foreach (var a in layout.GetAreas(AreaType.Hill)) return a.center;
+                    foreach (var a in layout.GetVisitableAreas(AreaType.Hill)) return a.center;
                 }
                 if (target == "river")
                 {

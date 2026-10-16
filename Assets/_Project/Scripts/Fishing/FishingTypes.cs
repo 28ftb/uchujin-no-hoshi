@@ -37,8 +37,10 @@ namespace Uchujin.Fishing
         Pond = 2,
         Sea = 4,
         Underground = 8,
-        Surface = River | Pond | Sea,
-        Any = River | Pond | Sea | Underground
+        /// <summary>湖（生成バージョン2〜。マップ設計 v0.2 §2.3）。</summary>
+        Lake = 16,
+        Surface = River | Pond | Sea | Lake,
+        Any = River | Pond | Sea | Underground | Lake
     }
 
     /// <summary>活発な時間帯（時間・天候仕様 §8）。</summary>
@@ -74,7 +76,10 @@ namespace Uchujin.Fishing
         ReverseRain, // 逆雨
         StarBand,    // 星の光帯
         CrystalHaze, // 結晶霞
-        BloomTide    // 花潮
+        BloomTide,   // 花潮
+        AfterRain,   // 雨上がり（雨がやんでから数時間。WeightContext.AfterRain で判定）
+        Storm,       // 荒天（強風＋強い雨）
+        ClearNight   // 晴れた空（星の光帯の夜を含む。夜の時間帯は FishTime で指定）
     }
 
     /// <summary>名人から教わる技（釣り仕様 §4.3）。名称・効果は仮案。</summary>

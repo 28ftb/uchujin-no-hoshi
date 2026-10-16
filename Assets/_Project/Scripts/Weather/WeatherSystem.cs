@@ -67,11 +67,27 @@ namespace Uchujin.Weather
             var layout = Game != null ? Game.Layout : null;
             if (layout == null) return s;
             var area = layout.GetAreaAt(position);
+            // 湖の範囲は、重なる小さなエリア（森など）より湖を優先する（湖の霧・風の弱まり：マップ設計 v0.2 §2.3）
+            AreaRegion lake = null;
+            foreach (var a in layout.Areas)
+                if (a.type == AreaType.Lake && a.Contains(position))
+                {
+                    lake = a;
+                    break;
+                }
+            if (lake != null) area = lake;
             if (area == null) return s;
             int hour = Clock != null ? Clock.Hour : 12;
             bool morning = hour >= 4 && hour < 9;
             switch (area.type)
             {
+                case AreaType.Lake:
+                    // 湖：周りより低く囲まれた水面なので、朝や曇りの日に霧が溜まり、風が一段弱まる（無風の日が増える）
+                    if ((morning || s.sky >= SkyState.Cloudy) && s.wind != WindLevel.Strong && s.visibility == VisibilityLevel.Normal && Climate.Fogginess > 0.25f)
+                        s.visibility = VisibilityLevel.LightFog;
+                    if (s.wind == WindLevel.Strong) s.wind = WindLevel.Breeze;
+                    else if (s.wind == WindLevel.Breeze && Climate.Windiness < 0.75f) s.wind = WindLevel.Calm;
+                    break;
                 case AreaType.Coast:
                     // 海岸は風が強い
                     if (s.wind == WindLevel.Calm) s.wind = WindLevel.Breeze;

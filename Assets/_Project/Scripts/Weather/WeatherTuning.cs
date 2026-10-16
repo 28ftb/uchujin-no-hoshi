@@ -26,6 +26,10 @@ namespace Uchujin.Weather
         // ---- 宇宙固有の現象（時間・天候仕様 §12【追加提案】） ----
         /// <summary>現象ごとの最大間隔（日）。季節待ちで進行が止まらないよう、これより空くと必ず起こす。</summary>
         public const int PhenomenonMaxGap = 12;
+
+        // ---- 天候の最低頻度（マップ設計 v0.2 §8.5：天候しだいの魚・生き物に会えなくならないように）----
+        /// <summary>雨・晴れ（昼）・強風・霧・無風・荒天・晴れた夜 が、それぞれこの日数より空いたら必ず起こす。</summary>
+        public static readonly int[] ConditionMaxGap = { 5, 3, 6, 7, 6, 14, 3 };
         /// <summary>1日目は穏やかな天気（不時着の日）。</summary>
         public const int CalmUntilMinuteOnDay1 = 15 * 60;
 

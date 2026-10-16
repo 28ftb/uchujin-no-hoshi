@@ -70,6 +70,77 @@ namespace Uchujin.World
         public int EndPondIndex = -1;
         public int WaterfallIndex = -1;
         public float WaterfallDrop;
+        /// <summary>点ごとの川底の追加の深さ（生成バージョン2：滝つぼを深く掘る）。空なら0。</summary>
+        public readonly List<float> ExtraDepth = new List<float>();
+        /// <summary>歩いて渡れる浅瀬（瀬）の点の番号（生成バージョン2。水深0.6m以下）。</summary>
+        public readonly List<int> Fords = new List<int>();
+        public float ExtraDepthAt(int i) => i >= 0 && i < ExtraDepth.Count ? ExtraDepth[i] : 0f;
+    }
+
+    /// <summary>
+    /// 湖（生成バージョン2。マップ設計 v0.2 §2.3）。岸は角度ごとに少し波打ち、湖底は岸からの距離と方角（遠浅・急深）で深さが変わる。
+    /// 最深部の近くまで細い岬（陸）が突き出し、そこから最深部を狙える（§2.3 P17）。
+    /// </summary>
+    public sealed class LakeInfo
+    {
+        public int WaterIndex;
+        public Vector2 Center;
+        /// <summary>基準の半径（岸までの距離はこれを角度ごとに揺らす）。</summary>
+        public float BaseRadius;
+        public float A1, P1, A2, P2;
+        public float Surface;
+        public float MaxDepth;
+        /// <summary>方角（ラジアン）：岬・遠浅・急深・泥底・砂泥底・静かな岸。</summary>
+        public float SpitAngle, ShelfAngle, SteepAngle, MudAngle, SandMudAngle, QuietAngle;
+        public Vector2 SpitBase, SpitTip;
+        public const float SpitHalfWidth = 3.2f;
+        /// <summary>小川の流れ込み口（濁り）。無ければ泥の入り江を濁りにする。</summary>
+        public bool HasInlet;
+        public Vector2 Inlet;
+
+        public float RadiusAt(float angle) => BaseRadius * (1f + A1 * Mathf.Sin(angle + P1) + A2 * Mathf.Sin(2f * angle + P2));
+
+        public static float Angle(Vector2 v) => Mathf.Atan2(v.y, v.x);
+
+        public static float AngleDiff(float a, float b)
+        {
+            float d = Mathf.Repeat(a - b + Mathf.PI, Mathf.PI * 2f) - Mathf.PI;
+            return Mathf.Abs(d);
+        }
+
+        public Vector2 Dir(float angle) => new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+
+        /// <summary>岸からの割合（0=中心、1=岸）。</summary>
+        public float K(Vector2 p)
+        {
+            var v = p - Center;
+            float d = v.magnitude;
+            if (d < 1e-3f) return 0f;
+            return d / Mathf.Max(1f, RadiusAt(Angle(v)));
+        }
+
+        public bool InSpit(Vector2 p) => GeoUtil.DistToSegment(p, SpitBase, SpitTip, out _) < SpitHalfWidth;
+
+        /// <summary>湖底の深さ（水面から）。遠浅の方角は岸から深くなるのが遅く、急深の方角は早い。</summary>
+        public float DepthAt(Vector2 p)
+        {
+            float k = K(p);
+            if (k >= 1f) return 0f;
+            float ang = Angle(p - Center);
+            float k0 = 0.38f;
+            if (AngleDiff(ang, ShelfAngle) < 0.95f) k0 = 0.25f;
+            else if (AngleDiff(ang, SteepAngle) < 0.8f) k0 = 0.6f;
+            return 0.35f + (MaxDepth - 0.35f) * (1f - GeoUtil.SmoothStep(k0, 0.97f, k));
+        }
+    }
+
+    /// <summary>滝の裏の洞（生成バージョン2。マップ設計 v0.2 §2.10）。入口は滝つぼの脇の崖。</summary>
+    public sealed class WaterfallCaveInfo
+    {
+        /// <summary>入口（地上の立ち位置）。</summary>
+        public Vector3 Entrance;
+        /// <summary>入口が向く向き（洞から外へ）。</summary>
+        public float Yaw;
     }
 
     public sealed class PondInfo
@@ -89,6 +160,8 @@ namespace Uchujin.World
         /// <summary>村の中心部は石畳。</summary>
         public bool Paved;
         public bool Bridge;
+        /// <summary>小道（静かな高台への道など。本道ではない：マップ設計 v0.2 §5.3）。</summary>
+        public bool Trail;
     }
 
     public enum NatureKind
@@ -187,6 +260,18 @@ namespace Uchujin.World
         public readonly List<ProjectSite> ProjectSites = new List<ProjectSite>();
         public readonly List<string> Notes = new List<string>();
         public WaterfallInfo Waterfall;
+        /// <summary>生成バージョン（1 or 2）。</summary>
+        public int Version = 1;
+        /// <summary>湖（生成バージョン2）。</summary>
+        public readonly List<LakeInfo> Lakes = new List<LakeInfo>();
+        /// <summary>静かな高台（生成バージョン2）。</summary>
+        public bool HasQuietHighland;
+        public Vector2 QuietCenter;
+        public float QuietRadius;
+        /// <summary>静かな高台の池（W.Ponds の番号。無ければ -1）。</summary>
+        public int HighlandPondIndex = -1;
+        /// <summary>滝の裏の洞（生成バージョン2）。</summary>
+        public WaterfallCaveInfo Cave;
         public bool HasPier;
         public Vector3 PierStart;
         public Vector3 PierEnd;

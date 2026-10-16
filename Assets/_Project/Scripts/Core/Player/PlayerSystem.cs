@@ -43,6 +43,17 @@ namespace Uchujin.Core
         /// <summary>新しいゲーム開始時の所持金【仮数値】。</summary>
         public const int StarterMoney = 500;
 
+        /// <summary>星ごとに覚えておく、最後にいた場所（ロードしたらそこから再開する：マップ設計 v0.2 §2.12）。</summary>
+        [Serializable]
+        public class PlanetPositionData
+        {
+            public string areaId;
+            public float x, y, z;
+            public float yaw;
+        }
+
+        private PlanetPositionData pendingPosition;
+
         public override void RegisterContent()
         {
             ItemRegistry.Register(new ItemDefinition
@@ -155,15 +166,65 @@ namespace Uchujin.Core
 
         public override string CaptureState(SaveScope scope, string playerId)
         {
-            if (scope != SaveScope.PlayerProfile || LocalPlayer == null || playerId != LocalPlayer.PlayerId) return null;
+            if (LocalPlayer == null || playerId != LocalPlayer.PlayerId) return null;
+            if (scope == SaveScope.PlayerPlanetKnowledge)
+            {
+                // 星の中の位置（星ごと・個人ごと）
+                var pos = LocalPlayer.Position;
+                return JsonUtility.ToJson(new PlanetPositionData
+                {
+                    areaId = LocalPlayer.CurrentAreaId,
+                    x = pos.x, y = pos.y, z = pos.z,
+                    yaw = LocalPlayer.Avatar != null ? LocalPlayer.Avatar.eulerAngles.y : 0f
+                });
+            }
+            if (scope != SaveScope.PlayerProfile) return null;
             return JsonUtility.ToJson(LocalPlayer.CaptureProfile());
         }
 
         public override void RestoreState(SaveScope scope, string playerId, string json)
         {
-            if (scope != SaveScope.PlayerProfile || LocalPlayer == null || playerId != LocalPlayer.PlayerId || string.IsNullOrEmpty(json)) return;
+            if (LocalPlayer == null || playerId != LocalPlayer.PlayerId || string.IsNullOrEmpty(json)) return;
+            if (scope == SaveScope.PlayerPlanetKnowledge)
+            {
+                pendingPosition = JsonUtility.FromJson<PlanetPositionData>(json);
+                return;
+            }
+            if (scope != SaveScope.PlayerProfile) return;
             var d = JsonUtility.FromJson<PlayerState.ProfileData>(json);
             LocalPlayer.RestoreProfile(d);
+        }
+
+        /// <summary>
+        /// ロードした時は、保存した場所から再開する（地上ならその位置、屋内・鉱山・滝の裏ならそのエリア）。
+        /// 使えない時（エリアが無い・水の中・地形の外）は自宅の前。ゲストとして他人の星に入った時は使わない（参加時の出現位置から）。
+        /// </summary>
+        public override void OnPlayStarted()
+        {
+            var d = pendingPosition;
+            pendingPosition = null;
+            var p = LocalPlayer;
+            if (d == null || p == null || WorldAuthority.Role == NetRole.Guest || string.IsNullOrEmpty(d.areaId)) return;
+            var layout = Game.Layout;
+            var areas = Game.Areas;
+            var pos = new Vector3(d.x, d.y, d.z);
+            if (d.areaId == AreaIds.Overworld)
+            {
+                if (layout == null) return;
+                float half = layout.WorldSize * 0.5f - 4f;
+                bool ok = Mathf.Abs(pos.x) < half && Mathf.Abs(pos.z) < half && !layout.IsWater(pos);
+                if (ok)
+                {
+                    p.Position = layout.OnGround(pos) + Vector3.up * 0.2f;
+                    if (p.Avatar != null) p.Avatar.rotation = Quaternion.Euler(0f, d.yaw, 0f);
+                    if (CameraRig != null) CameraRig.SnapToTarget();
+                }
+                else if (areas != null) areas.Transition(p, AreaIds.Overworld);
+                return;
+            }
+            if (areas == null) return;
+            if (areas.Get(d.areaId) != null) areas.Transition(p, d.areaId);
+            else areas.Transition(p, AreaIds.Overworld);
         }
     }
 }

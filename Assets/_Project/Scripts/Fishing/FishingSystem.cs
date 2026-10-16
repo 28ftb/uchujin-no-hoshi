@@ -9,7 +9,7 @@ namespace Uchujin.Fishing
 {
     /// <summary>
     /// 釣りシステム（魚釣りシステム仕様案 v0.2）。
-    /// ・宇宙魚41種（§7, §9）を ItemRegistry に登録。修理用の ひやひれ（FishFrostFin）・ゆらめ（FishRippleEye）を含む。
+    /// ・宇宙魚50種（魚50種原本 F001〜F050）を ItemRegistry に登録。修理用の候補魚（冷却：シモマダラ・ヒヤシウオ／振動：ハモリウオ・オトナシ・サザナミメ・イワナキ）を含む。旧案41種の ID は読み替える。
     /// ・出現条件（§6）：釣り場の水域・特徴タグ、時間帯、天候・宇宙固有現象、餌、日替わりの傾向（決定的）。四季なし。
     /// ・操作：竿を装備して水辺で道具使用（または餌を手に持って使用）→ キャスト → 待つ → アタリ → ミニゲーム（§3）→ 釣果（§8）。
     /// ・成長（§4）：竿の段階1〜5、釣りレベル、名人から教わる技（§4.3, §5）。
@@ -365,8 +365,25 @@ namespace Uchujin.Fishing
                 BaitId = bait,
                 Level = player != null ? GetProfile(player.PlayerId).level : 1,
                 PrecisionBonus = precision,
+                AfterRain = IsAfterRain(weather),
                 LegendResting = IsLegendResting
             };
+        }
+
+        /// <summary>雨がやんでから数時間以内か（予定の天気をさかのぼって調べる。雨上がりの魚 F037）。【仮数値】5時間</summary>
+        private bool IsAfterRain(IWeatherService weather)
+        {
+            if (weather == null || Clock == null) return false;
+            if (weather.Current.IsRaining) return false;
+            int day = CurrentDay, hour = Clock.Hour;
+            for (int back = 1; back <= 5; back++)
+            {
+                int h = hour - back, d = day;
+                if (h < 0) { h += 24; d -= 1; }
+                if (d < 1) break;
+                if (weather.GetPlanned(d, h).IsRaining) return true;
+            }
+            return false;
         }
 
         public FishSpecies PickFish(PlayerState player, SpotInfo spot, string bait, bool precision, SeededRandom rng)
@@ -558,8 +575,8 @@ namespace Uchujin.Fishing
                     continue;
                 }
                 string kind;
-                if (notable.Id == SharedItemIds.FishFrostFin) kind = "frost";
-                else if (notable.Id == SharedItemIds.FishRippleEye || notable.IsLegend) kind = "ripple";
+                if (FishCatalog.IsCoolingFish(notable)) kind = "frost";
+                else if (FishCatalog.IsSensorFish(notable) || notable.IsLegend) kind = "ripple";
                 else if (notable.Glowing && (spot.IsUnderground || DayPartUtil.IsDark(Clock.Hour))) kind = "glow";
                 else kind = "shadow";
                 v.SetNotable(kind, notable.Color);
@@ -634,7 +651,7 @@ namespace Uchujin.Fishing
                 PrimitiveBuilder.Part(t, PrimitiveType.Cylinder, new Vector3(-0.5f + i * 0.5f, 1.8f, -0.1f), new Vector3(0.04f, 0.7f, 0.04f), new Color(0.75f, 0.55f, 0.35f), "Rod" + i);
             PrimitiveBuilder.Part(t, PrimitiveType.Cube, new Vector3(0.95f, 0.25f, 0.3f), new Vector3(0.5f, 0.5f, 0.5f), new Color(0.4f, 0.6f, 0.75f), "BaitBox");
             PrimitiveBuilder.Part(t, PrimitiveType.Cube, new Vector3(0, 2.0f, 0.3f), new Vector3(1.4f, 0.9f, 0.08f), new Color(0.9f, 0.85f, 0.7f), "RecordBoard");
-            var fish = FishVisuals.BuildFish(FishCatalog.Get("fish.kurukuru"), t, new Vector3(0, 2.0f, 0.38f), 0.5f);
+            var fish = FishVisuals.BuildFish(FishCatalog.ByNo("F022"), t, new Vector3(0, 2.0f, 0.38f), 0.5f);
             fish.transform.localRotation = Quaternion.Euler(0, 90, 0);
             PrimitiveBuilder.Part(t, PrimitiveType.Sphere, new Vector3(-0.95f, 1.0f, 0.2f), Vector3.one * 0.18f, new Color(1f, 0.85f, 0.3f), "Bell");
             PrimitiveBuilder.AddBoxCollider(hutStation, new Vector3(0, 1f, 0), new Vector3(2.4f, 2.2f, 1.2f));

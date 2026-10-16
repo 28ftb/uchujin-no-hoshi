@@ -18,11 +18,26 @@ namespace Uchujin.Core
         /// <summary>高密度エネルギー結晶（9〜10階）。主エンジン R05 の中核。</summary>
         public const string OreEnergyCrystal = "ore.energy_crystal";
 
-        // ===== 釣り（登録担当：Fishing）=====
-        /// <summary>温度差に強い特殊な膜を持つ魚（冷却循環装置 R03）。</summary>
-        public const string FishFrostFin = "fish.frost_fin";
-        /// <summary>波・振動・空間の揺らぎを感知する器官を持つ珍しい魚（次元観測装置 R06）。</summary>
-        public const string FishRippleEye = "fish.ripple_eye";
+        // ===== 釣り（登録担当：Fishing。魚50種の原本 F001〜F050：Fish/design/fish_50_design_v0_2.md §9）=====
+        /// <summary>F008 シモマダラ：冷たい湧き水の淵の一般魚。冷却膜（標準品質）の候補（冷却循環装置 R03）。</summary>
+        public const string FishShimomadara = "fish.f008_shimomadara";
+        /// <summary>F044 ヒヤシウオ：湖・地下湖の深場の希少魚。冷却膜（高品質）の候補（R03）。</summary>
+        public const string FishHiyashiuo = "fish.f044_hiyashiuo";
+        /// <summary>F030 ハモリウオ：音を重ねて鳴く。振動センサーの候補（次元観測装置 R06）。</summary>
+        public const string FishHamoriuo = "fish.f030_hamoriuo";
+        /// <summary>F041 イワナキ：地下湖の低音の魚。振動センサーの候補（R06）。</summary>
+        public const string FishIwanaki = "fish.f041_iwanaki";
+        /// <summary>F043 オトナシ：静かな岸の敏感な魚。振動センサーの候補（R06）。</summary>
+        public const string FishOtonashi = "fish.f043_otonashi";
+        /// <summary>F045 サザナミメ：水の振動を感じる感覚器。振動センサーの候補（R06）。</summary>
+        public const string FishSazanamime = "fish.f045_sazanamime";
+        /// <summary>冷却膜（R03）の候補魚。どれでも修理を進められる（原本 §9.1）。</summary>
+        public static readonly string[] FishCoolingCandidates = { FishShimomadara, FishHiyashiuo };
+        /// <summary>振動センサー（R06）の候補魚。感知の仕方が異なる4種から選べる（原本 §9.1）。</summary>
+        public static readonly string[] FishSensorCandidates = { FishHamoriuo, FishOtonashi, FishSazanamime, FishIwanaki };
+        /// <summary>旧案（魚41種）の修理用の魚の ID。古いセーブの読み替えにだけ使う。</summary>
+        public const string LegacyFishFrostFin = "fish.frost_fin";
+        public const string LegacyFishRippleEye = "fish.ripple_eye";
 
         // ===== 農業（登録担当：Farming）=====
         /// <summary>星蜜果（エネルギー特性を持つ作物。燃料 R04）。</summary>
@@ -34,7 +49,7 @@ namespace Uchujin.Core
         public const string PartConductiveWire = "part.conductive_wire";
         /// <summary>強化船体板（高強度金属を鍛冶屋で鍛造）。R02。</summary>
         public const string PartHullPlate = "part.hull_plate";
-        /// <summary>冷却膜（フロストフィンを洗浄・加工）。R03。</summary>
+        /// <summary>冷却膜（シモマダラ・ヒヤシウオの膜を洗浄・加工）。R03。</summary>
         public const string PartCoolingMembrane = "part.cooling_membrane";
         /// <summary>宇宙船用燃料（星蜜果を圧搾・発酵・加熱で精製）。R04/R08。</summary>
         public const string FuelStarHoney = "fuel.star_honey";
@@ -42,7 +57,7 @@ namespace Uchujin.Core
         public const string PartHeatproofFrame = "part.heatproof_frame";
         /// <summary>結晶エネルギーコア（高密度結晶を加工）。R05。</summary>
         public const string PartCrystalCore = "part.crystal_core";
-        /// <summary>揺らぎセンサー素材（リップルアイの器官を精密加工）。R06。</summary>
+        /// <summary>揺らぎセンサー素材（振動を感じる魚の器官を精密加工）。R06。</summary>
         public const string PartRippleSensor = "part.ripple_sensor";
 
         // ===== 購入部品（登録担当：Rocket。修理屋の住民から購入）=====

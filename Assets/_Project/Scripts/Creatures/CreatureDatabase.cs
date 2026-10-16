@@ -300,7 +300,8 @@ namespace Uchujin.Creatures
             s.HabitJa = "砂玉を転がして歩く。丸めた砂玉はぎゅっと固い。"; s.HabitEn = "Rolls sand balls, packed very tight.";
             s.ClueJa = "砂に残った跡をたどる。"; s.ClueEn = "Follow the tracks in the sand.";
             s.CharmJa = "砂を丸めて遊ぶ。"; s.CharmEn = "Plays by rolling sand.";
-            s.Areas = new[] { AreaType.Coast, AreaType.Riverside }; s.Features = new[] { "rock" };
+            // 仕様 §3.3「砂に残った跡をたどる」に合わせて砂（砂浜・川の砂州）。旧実装は rock（マップ設計 v0.2 §2.8 P9）
+            s.Areas = new[] { AreaType.Coast, AreaType.Riverside }; s.Features = new[] { "sand" };
             s.Active = ActiveTime.Day; s.Weather = WeatherLike.Dry;
             s.Catch = CatchStyle.Discover; s.Behavior = WildBehavior.Roll; s.Abilities = new[] { CreatureAbility.Press }; s.HasProposedAbility = true;
             s.Rarity = 1; s.BasePrice = 320; s.Shape = BodyShape.Roller; s.Main = C(0.96f, 0.86f, 0.6f); s.Accent = C(0.8f, 0.66f, 0.42f);

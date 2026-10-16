@@ -1,5 +1,7 @@
 # Weather モジュール（天候・気候・宇宙固有現象・昼夜の光）
 
+> **2026-10-16 の変更（マップ設計 v0.2 §8.5）**：天候の最低頻度。雨・晴れ（昼）・強風・霧・無風・荒天（強風＋雨）・晴れた夜が、それぞれ 5・3・6・7・6・14・3 日（`WeatherTuning.ConditionMaxGap`）より空きそうな日は、決まった時間帯にその天気を入れる（1時間以上続いた時だけ「起きた」と数える）。湖のエリアでは朝や曇りの日に霧が溜まり、風が一段弱まる（`GetAt`）。
+
 `Uchujin.Weather.WeatherSystem : GameSystemBase, IWeatherService`（SaveKey `"weather"`、DailyUpdateOrder 10）。仕様：`uchujin_no_hoshi_time_weather_spec_v0_2.md`。
 
 ## ファイル

@@ -76,6 +76,7 @@ namespace Uchujin.World
             if (Vector2.Distance(c, crashCenter) < WorldTuning.CrashCraterRadius + 1f) extra += 30f;
             if (S.IsForest(c.x, c.y)) extra += 0.5f;
             if (S.CoastD(c.x, c.y) < 10f) extra += 1.5f;
+            if (V2) extra += ExtraCostV2(c);
             return extra;
         }
 
@@ -113,6 +114,7 @@ namespace Uchujin.World
                 }
             }
             if (W.HasPier) dests.Add((GeoUtil.XZ(W.PierStart), "pier"));
+            if (V2 && W.Lakes.Count > 0) dests.Add((W.Lakes[0].SpitBase, "lake"));
             dests.Sort((a, b) => Vector2.Distance(a.p, plaza).CompareTo(Vector2.Distance(b.p, plaza)));
             foreach (var d in dests) Route(plaza, d.p, d.id, true);
 
@@ -165,6 +167,7 @@ namespace Uchujin.World
                     }
                 }
             }
+            if (V2) BuildQuietTrail();
         }
 
         private int NearestNode(Vector2 p, int exclude = -1)
@@ -269,6 +272,8 @@ namespace Uchujin.World
                 foreach (var frac in fracs)
                 {
                     int i = Mathf.Clamp(Mathf.RoundToInt((path.Points.Count - 1) * frac), 1, path.Points.Count - 2);
+                    // 生成バージョン2：暮らしの谷の中（広場から本道で25秒以内）に限る（マップ設計 v0.2 §2.12）
+                    if (V2 && PathDistanceTo(path, i) > WorldTuning.SatelliteMaxPath - 20f) continue;
                     var p = path.Points[i];
                     var dir = (path.Points[i + 1] - path.Points[i - 1]).normalized;
                     var n = new Vector2(-dir.y, dir.x);
@@ -342,12 +347,13 @@ namespace Uchujin.World
             var order = new List<RoadPathInfo>();
             foreach (var rp in roadPaths) if (rp.Residential) order.Add(rp);
             r.Shuffle(order);
-            int target = WorldTuning.HousePlotTarget;
+            int target = V2 ? WorldTuning.HousePlotTargetV2 : WorldTuning.HousePlotTarget;
 
             foreach (var rp in order)
             {
                 if (L.HousePlots.Count >= target) break;
-                float acc = r.Range(0f, WorldTuning.HousePlotSpacing);
+                float spacingPlots = V2 ? WorldTuning.HousePlotSpacingV2 : WorldTuning.HousePlotSpacing;
+                float acc = r.Range(0f, spacingPlots);
                 for (int i = 1; i < rp.Points.Count && L.HousePlots.Count < target; i++)
                 {
                     var a = rp.Points[i - 1];
@@ -361,7 +367,7 @@ namespace Uchujin.World
                     {
                         var p = a + dir * t;
                         float dPlaza = Vector2.Distance(p, plaza);
-                        if (dPlaza > 38f && dPlaza < WorldTuning.HousePlotMaxDistFromPlaza)
+                        if (dPlaza > 38f && dPlaza < (V2 ? WorldTuning.HousePlotMaxDistFromPlazaV2 : WorldTuning.HousePlotMaxDistFromPlaza))
                         {
                             int firstSide = r.Chance(0.5f) ? 1 : -1;
                             bool added = false;
@@ -373,7 +379,7 @@ namespace Uchujin.World
                                 added = TryAddPlot(c, YawOf(p - c), plotRadius);
                             }
                         }
-                        t += WorldTuning.HousePlotSpacing;
+                        t += spacingPlots;
                     }
                     acc = t - segLen;
                 }
@@ -381,10 +387,12 @@ namespace Uchujin.World
 
             // 足りなければ広場の外周に追加（私道をつなぐ）
             int guard = 0;
-            while (L.HousePlots.Count < WorldTuning.HousePlotTarget && guard++ < 1500)
+            int guardMax = V2 ? 3000 : 1500;
+            float radMax = V2 ? 175f : 150f;
+            while (L.HousePlots.Count < target && guard++ < guardMax)
             {
                 float ang = r.Range(0f, 360f);
-                float rad = r.Range(45f, 150f);
+                float rad = r.Range(45f, radMax);
                 var c = plaza + Fwd2(ang) * rad;
                 int near = NearestNode(c);
                 if (near < 0) break;
@@ -393,12 +401,29 @@ namespace Uchujin.World
                 if (Vector2.Distance(np, c) < 3f) continue;
                 TryAddPlot(c2, YawOf(np - c2), plotRadius);
             }
-            if (L.HousePlots.Count < WorldTuning.HousePlotMinimum) W.Notes.Add("住宅区画が不足: " + L.HousePlots.Count);
+            // 生成バージョン2：まだ足りなければ、少し遠く・少し起伏のある所まで広げて探す（湖・静かな高台を避ける分）
+            if (V2)
+            {
+                guard = 0;
+                while (L.HousePlots.Count < target && guard++ < 2500)
+                {
+                    float ang = r.Range(0f, 360f);
+                    float rad = r.Range(45f, WorldTuning.HousePlotMaxDistFromPlazaV2 + 10f);
+                    var c = plaza + Fwd2(ang) * rad;
+                    int near = NearestNode(c);
+                    if (near < 0) break;
+                    var np = NodeXZ(near);
+                    if (Vector2.Distance(np, c) < 3f) continue;
+                    var c2 = np + (c - np).normalized * WorldTuning.HousePlotRoadOffset;
+                    TryAddPlot(c2, YawOf(np - c2), plotRadius, 6.8f);
+                }
+            }
+            if (L.HousePlots.Count < (V2 ? WorldTuning.HousePlotMinimumV2 : WorldTuning.HousePlotMinimum)) W.Notes.Add("住宅区画が不足: " + L.HousePlots.Count);
         }
 
-        private bool TryAddPlot(Vector2 c, float yaw, float radius)
+        private bool TryAddPlot(Vector2 c, float yaw, float radius, float maxRough = 5.2f)
         {
-            if (!SiteOk(c, radius, false, 5.2f, true, 1.0f)) return false;
+            if (!SiteOk(c, radius, false, maxRough, true, 1.0f)) return false;
             if (Vector2.Distance(c, crashCenter) < WorldTuning.CrashCraterRadius + 14f) return false;
             if (Vector2.Distance(c, mineMouth) < 16f) return false;
             if (Vector2.Distance(c, lookoutCenter) < 12f) return false;
@@ -768,6 +793,7 @@ namespace Uchujin.World
                     Yaw = YawOf(bot - top),
                     Width = rv.Radius[i] * 2f
                 };
+                if (V2) PlaceWaterfallCave();
             }
         }
 

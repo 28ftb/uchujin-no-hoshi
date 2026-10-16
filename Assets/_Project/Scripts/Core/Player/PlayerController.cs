@@ -42,6 +42,7 @@ namespace Uchujin.Core
             if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward;
             Vector3 right = Vector3.Cross(Vector3.up, fwd);
             Vector3 move = fwd * input.y + right * input.x;
+            move = LimitWading(move);
             float speed = GameInput.Run ? runSpeed : walkSpeed;
             IsMoving = move.sqrMagnitude > 0.01f;
             CurrentSpeed = IsMoving ? speed : 0f;
@@ -70,6 +71,33 @@ namespace Uchujin.Core
             {
                 Player.Position = Game.Instance.Layout.OnGround(Game.Instance.Layout.PlayerSpawn) + Vector3.up;
             }
+        }
+
+        /// <summary>
+        /// 深さ0.6mを超える水へは入らない（泳ぎは無い。マップ設計 v0.2 §2.7）。橋の上・浅瀬は通れる。
+        /// 今いる所より深くなる向きだけ止め、壁沿いのように横へは滑らせる。すでに深い所にいても浅い方へは出られる。
+        /// 水深は WorldLayout.WaterDepthSampler（生成バージョン2の星だけ設定される）。
+        /// </summary>
+        private Vector3 LimitWading(Vector3 move)
+        {
+            if (move.sqrMagnitude < 1e-4f || Player == null || Player.CurrentAreaId != AreaIds.Overworld) return move;
+            var layout = Game.Instance != null ? Game.Instance.Layout : null;
+            if (layout == null) return move;
+            var pos = transform.position;
+            float here = layout.WaterDepthAt(pos);
+            if (!TooDeep(layout, pos, move, here)) return move;
+            var mx = new Vector3(move.x, 0f, 0f);
+            if (!TooDeep(layout, pos, mx, here)) return mx;
+            var mz = new Vector3(0f, 0f, move.z);
+            if (!TooDeep(layout, pos, mz, here)) return mz;
+            return Vector3.zero;
+        }
+
+        private static bool TooDeep(Uchujin.World.WorldLayout layout, Vector3 pos, Vector3 dir, float here)
+        {
+            if (dir.sqrMagnitude < 1e-4f) return false;
+            float d = layout.WaterDepthAt(pos + dir.normalized * 0.6f);
+            return d > Uchujin.World.WorldLayout.WadeableDepth && d > here + 0.02f;
         }
 
         /// <summary>簡単な身振りアニメーション（見た目担当モジュールが差し替え可能）。</summary>

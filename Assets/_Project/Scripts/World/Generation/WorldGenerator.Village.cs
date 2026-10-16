@@ -105,6 +105,7 @@ namespace Uchujin.World
                 if (fp.SignedDistance(c.x, c.y) < radius + 1.5f) return false;
             foreach (var rs in reserved)
                 if (Vector2.Distance(rs.c, c) < rs.r + radius) return false;
+            if (!QuietClearOk(c)) return false;
             if (W.FarmReserve.width > 0f)
             {
                 var rr = W.FarmReserve;
@@ -165,6 +166,7 @@ namespace Uchujin.World
                 if (S.MountainFactor(c.x, c.y) < 1.45f) continue;
                 if (Vector2.Distance(c, S.HillCenter) < S.HillRadius + 26f) continue;
                 if (F.WaterNear(c.x, c.y, 26f)) continue;
+                if (V2 && S.HasQuiet && Vector2.Distance(c, S.QuietCenter) < 140f) continue;
                 float rough = F.Roughness(c.x, c.y, 30f);
                 float river = DistToRivers(c);
                 float score = -rough * 3f - Mathf.Abs(d - 85f) * 0.12f - c.magnitude * 0.07f + r.Range(0f, 3f);
@@ -182,6 +184,7 @@ namespace Uchujin.World
             }
             plaza = best;
             W.PlazaCenter = new Vector3(plaza.x, 0f, plaza.y);
+            if (V2) DecideQuietShore();
             AddPad(PadKind.Plaza, plaza, new Vector2(WorldTuning.PlazaRadius + 2f, 0f), 0f, true, 6f, IdOf(FacilityType.Plaza));
             var pf = AddFacility(FacilityType.Plaza, IdOf(FacilityType.Plaza), plaza, 0f, SizeOf(FacilityType.Plaza), plaza);
             pf.entrance = pf.position;
@@ -271,6 +274,7 @@ namespace Uchujin.World
                 if (S.MountainFactor(c.x, c.y) < 1.15f) continue;
                 if (Vector2.Distance(c, S.HillCenter) < S.HillRadius + 30f) continue;
                 if (RectHasWater(reserve, 2f)) continue;
+                if (!QuietClearOk(c)) continue;
                 float rough = RectRoughness(new Rect(c.x - hw, c.y - hd, hw * 2f, hd * 2f));
                 if (rough > (relaxed ? 7f : 4f)) continue;
                 float halfDiag = new Vector2(hw + m, hd + m).magnitude;
@@ -358,6 +362,7 @@ namespace Uchujin.World
                 if (Vector2.Distance(c, S.HillCenter) < S.HillRadius + 16f) continue;
                 if (F.WaterNear(c.x, c.y, 20f)) continue;
                 if (Vector2.Distance(c, farmCenter) < 58f) continue;
+                if (V2 && S.HasQuiet && Vector2.Distance(c, S.QuietCenter) < WorldTuning.QuietHouseClearance) continue;
                 float rough = F.Roughness(c.x, c.y, 13f);
                 if (rough > (relaxed ? 8f : 5f)) continue;
                 bool overlap = false;
@@ -407,6 +412,7 @@ namespace Uchujin.World
                     if (!GeoUtil.InsideWorld(p, 18f)) continue;
                     float h = F.SampleTerrain(p.x, p.y);
                     if (h - footH > S.MountainPeak * 0.34f) continue;
+                    if (V2 && S.HasQuiet && Vector2.Distance(p, S.QuietCenter) < WorldTuning.QuietRoadClearance + 15f) continue;
                     if (DistToRivers(p) < 18f) break;
                     if (F.WaterNear(p.x, p.y, 10f)) break;
                     bool overlap = false;
@@ -582,6 +588,11 @@ namespace Uchujin.World
 
         private void PlacePier()
         {
+            if (V2)
+            {
+                PlacePierV2();
+                return;
+            }
             float bestD = float.MaxValue;
             for (float t = -165f; t <= 165f; t += 6f)
             {

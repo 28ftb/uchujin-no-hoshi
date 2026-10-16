@@ -121,6 +121,34 @@ namespace Uchujin.Mining
         /// ・地下湖を Layout.FishingSpots に "underground" タグ付きで追加（釣りモジュールが地下の魚の出現に使う）。
         /// ・洞窟の生息地点を ctx.Shared["mining.caveHabitats"]（List&lt;HabitatPoint&gt;）で渡す（生き物モジュールの地下生物 No.041〜050 用）。
         /// </summary>
+        /// <summary>
+        /// 地下湖の釣り場（"underground" タグ付き。釣りモジュールが地下の魚の出現に使う）。ワールド生成の検査ツールも同じものを使う。
+        /// 岸のタグ（マップ設計 v0.2 §2.11）：冷たい（〜4階）・深い（6階〜）・結晶（8階〜）・浅い岸（〜4階）・鉱石の多い岸（4〜8階）・最深部（最下階）。
+        /// </summary>
+        public static FishingSpot LakeSpot(MineFloorLayout L, int f)
+        {
+            float radius = Mathf.Min(L.Lake.width, L.Lake.height) * MiningTuning.Cell * 0.5f;
+            var spot = new FishingSpot
+            {
+                id = "mine.lake.f" + f,
+                waterId = "mine.lake.f" + f,
+                waterType = WaterType.Pond,
+                standPosition = L.CellCenter(L.LakeStand),
+                waterPosition = L.RectCenter(L.Lake) + Vector3.up * 0.1f
+            };
+            spot.tags.Add("underground");
+            spot.tags.Add("cave");
+            spot.tags.Add("floor:" + f);
+            spot.tags.Add("radius:" + radius.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
+            if (f <= 4) spot.tags.Add("cold");
+            if (f >= 6) spot.tags.Add("deep");
+            if (f >= 8) spot.tags.Add("crystal");
+            if (f <= 4) spot.tags.Add("shore_shallow");
+            if (f >= 4 && f <= 8) spot.tags.Add("ore_shore");
+            if (f >= MiningTuning.FloorCount) spot.tags.Add("deepest");
+            return spot;
+        }
+
         private void ShareWithOtherModules(PlanetContext ctx)
         {
             var habitats = new List<HabitatPoint>();
@@ -129,22 +157,7 @@ namespace Uchujin.Mining
                 var L = layouts[f];
                 if (L.HasLake && ctx.Layout != null)
                 {
-                    float radius = Mathf.Min(L.Lake.width, L.Lake.height) * MiningTuning.Cell * 0.5f;
-                    var spot = new FishingSpot
-                    {
-                        id = "mine.lake.f" + f,
-                        waterId = "mine.lake.f" + f,
-                        waterType = WaterType.Pond,
-                        standPosition = L.CellCenter(L.LakeStand),
-                        waterPosition = L.RectCenter(L.Lake) + Vector3.up * 0.1f
-                    };
-                    spot.tags.Add("underground");
-                    spot.tags.Add("cave");
-                    spot.tags.Add("floor:" + f);
-                    spot.tags.Add("radius:" + radius.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
-                    if (f <= 4) spot.tags.Add("cold");
-                    if (f >= 6) spot.tags.Add("deep");
-                    if (f >= 8) spot.tags.Add("crystal");
+                    var spot = LakeSpot(L, f);
                     ctx.Layout.FishingSpots.RemoveAll(s => s != null && s.id == spot.id);
                     ctx.Layout.FishingSpots.Add(spot);
                     habitats.Add(new HabitatPoint { position = spot.standPosition, area = AreaType.MineEntrance, feature = "cave_lake" });

@@ -36,6 +36,7 @@ namespace Uchujin.Fishing
                 case FishWater.River: return Loc.T("川", "River");
                 case FishWater.Pond: return Loc.T("池", "Pond");
                 case FishWater.Sea: return Loc.T("海", "Sea");
+                case FishWater.Lake: return Loc.T("湖", "Lake");
                 case FishWater.Underground: return Loc.T("地下湖", "Underground lake");
                 default: return Loc.T("水辺", "Water");
             }
@@ -126,6 +127,7 @@ namespace Uchujin.Fishing
             {
                 case WaterType.River: return FishWater.River;
                 case WaterType.Sea: return FishWater.Sea;
+                case WaterType.Lake: return FishWater.Lake;
                 default: return FishWater.Pond;
             }
         }
@@ -287,11 +289,17 @@ namespace Uchujin.Fishing
             }
         }
 
-        public static bool WeatherMatches(WeatherNeed need, WeatherState w)
+        public static bool WeatherMatches(WeatherNeed need, WeatherState w) => WeatherMatches(need, w, false);
+
+        /// <summary>afterRain：雨がやんでから数時間以内か（予定の天気から FishingSystem が求める）。</summary>
+        public static bool WeatherMatches(WeatherNeed need, WeatherState w, bool afterRain)
         {
             switch (need)
             {
                 case WeatherNeed.Any: return true;
+                case WeatherNeed.AfterRain: return afterRain && !w.IsRaining;
+                case WeatherNeed.Storm: return w.wind == WindLevel.Strong && w.precipitation >= Precipitation.Rain;
+                case WeatherNeed.ClearNight: return (w.sky <= SkyState.Sunny && !w.IsRaining) || w.Has(AlienPhenomenon.StarBand);
                 case WeatherNeed.Rain: return w.IsRaining;
                 case WeatherNeed.HeavyRain: return w.precipitation == Precipitation.HeavyRain;
                 case WeatherNeed.NoRain: return !w.IsRaining;
@@ -381,6 +389,8 @@ namespace Uchujin.Fishing
             public string BaitId;
             public int Level = 1;
             public bool PrecisionBonus;
+            /// <summary>雨がやんでから数時間以内か（雨上がりの魚 F037 など）。</summary>
+            public bool AfterRain;
             public System.Func<string, bool> LegendResting;
         }
 
@@ -388,7 +398,8 @@ namespace Uchujin.Fishing
         {
             if (!CanLiveIn(s, spot)) return 0f;
             var weather = spot.IsUnderground ? CaveWeather : c.Weather;
-            if (!WeatherMatches(s.RequireWeather, weather)) return 0f;
+            bool afterRain = !spot.IsUnderground && c.AfterRain;
+            if (!WeatherMatches(s.RequireWeather, weather, afterRain)) return 0f;
             if (s.IsLegend && c.LegendResting != null && c.LegendResting(s.Id)) return 0f;
 
             float w = RarityWeight(s.Rarity);
@@ -408,7 +419,7 @@ namespace Uchujin.Fishing
             }
             foreach (var lw in s.LikeWeather)
             {
-                if (WeatherMatches(lw, weather))
+                if (WeatherMatches(lw, weather, afterRain))
                 {
                     w *= LikedWeatherMultiplier;
                     break;

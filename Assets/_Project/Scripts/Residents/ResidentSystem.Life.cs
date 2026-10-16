@@ -466,7 +466,7 @@ namespace Uchujin.Residents
             {
                 if (type == FacilityType.Lookout)
                 {
-                    var hill = new List<AreaRegion>(layout.GetAreas(AreaType.Hill));
+                    var hill = new List<AreaRegion>(layout.GetVisitableAreas(AreaType.Hill));
                     if (hill.Count > 0) return layout.OnGround(hill[0].center + Jitter(jitterKey, jitter));
                 }
                 if (type == FacilityType.MineEntrance) return layout.OnGround(layout.MineEntrance + Jitter(jitterKey, jitter));

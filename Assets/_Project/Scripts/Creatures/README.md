@@ -1,5 +1,7 @@
 # Creatures（宇宙生物・生き物取り）— `Uchujin.Creatures.CreatureSystem`
 
+> **2026-10-16 の変更（マップ設計 v0.2）**：湖の岸（`AreaType.Lake`）は池と同じに扱う（池を好む種が湖岸にも出る）。静かな高台（`AreaRegion.quiet`）の中で半径40mに住民がいない時、ユメボシ・ホシノコが出やすい（×2.5。ホシノコは光帯・生き物の集まり・農場に加えて、静かな高台でも出られる）。スナコロの地形要素を仕様どおり砂（`sand`）にした（地形生成が砂浜と川の砂州に砂の生息地点を置く）。
+
 SaveKey `"creatures"` / DailyUpdateOrder 250 / `ICreatureService` を実装。Core 以外のモジュールを直接参照しない。
 
 ## 1. 実装した内容（仕様との対応）

@@ -589,8 +589,12 @@ namespace Uchujin.Cooking
             r = R("rcp.part.hull_plate", "強化船体板", "Reinforced hull plate", SharedItemIds.PartHullPlate, RecipeKind.RocketPart, new[] { CraftStationType.Forge })
                 .Need(Ing.Item(SharedItemIds.OreSturdyMetal, 4)).Do(CraftStep.Heat, CraftStep.Shape, CraftStep.Shape);
             r.StartKnown = true; r.CommissionFee = 300;
+            // 冷却膜：候補魚のどちらでも作れる。希少魚ヒヤシウオの膜なら1匹で済む（魚50種原本 §9.1「品質差を検討」の【提案】）
             r = R("rcp.part.cooling_membrane", "冷却膜", "Cooling membrane", SharedItemIds.PartCoolingMembrane, RecipeKind.RocketPart, new[] { CraftStationType.RocketWorkshop, CraftStationType.Workbench })
-                .Need(Ing.Item(SharedItemIds.FishFrostFin, 2)).Do(CraftStep.Water, CraftStep.Shape, CraftStep.Cool);
+                .Need(Ing.Item(SharedItemIds.FishShimomadara, 2)).Do(CraftStep.Water, CraftStep.Shape, CraftStep.Cool);
+            r.StartKnown = true; r.CommissionFee = 250;
+            r = R("rcp.part.cooling_membrane.fine", "上質な冷却膜", "Fine cooling membrane", SharedItemIds.PartCoolingMembrane, RecipeKind.RocketPart, new[] { CraftStationType.RocketWorkshop, CraftStationType.Workbench })
+                .Need(Ing.Item(SharedItemIds.FishHiyashiuo, 1)).Do(CraftStep.Water, CraftStep.Shape, CraftStep.Cool);
             r.StartKnown = true; r.CommissionFee = 250;
             r = R("rcp.part.fuel", "星蜜燃料", "Star-honey fuel", SharedItemIds.FuelStarHoney, RecipeKind.RocketPart, new[] { CraftStationType.Refinery })
                 .Need(Ing.Item(SharedItemIds.CropStarHoneyFruit, 3)).Do(CraftStep.Press, CraftStep.Ferment, CraftStep.Heat);
@@ -602,7 +606,7 @@ namespace Uchujin.Cooking
                 .Need(Ing.Item(SharedItemIds.OreEnergyCrystal, 2)).Do(CraftStep.Polish, CraftStep.Shape);
             r.StartKnown = true; r.CommissionFee = 600; r.BonusPhenomenon = AlienPhenomenon.CrystalHaze;
             r = R("rcp.part.ripple_sensor", "揺らぎセンサー素材", "Ripple sensor", SharedItemIds.PartRippleSensor, RecipeKind.RocketPart, new[] { CraftStationType.RocketWorkshop })
-                .Need(Ing.Item(SharedItemIds.FishRippleEye, 1)).Do(CraftStep.Water, CraftStep.Polish);
+                .Need(Ing.SensorFish(1)).Do(CraftStep.Water, CraftStep.Polish);
             r.StartKnown = true; r.CommissionFee = 500;
 
             // ---- 調理器具（家具職人の作業台・自宅の作業台。家具職人に頼むこともできる）----

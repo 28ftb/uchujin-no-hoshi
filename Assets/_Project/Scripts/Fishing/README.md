@@ -8,7 +8,7 @@
 | ファイル | 内容 |
 |---|---|
 | `FishingSystem.cs` | システム本体。ライフサイクル、釣りの開始（ToolUseRouter）、抽選、釣果処理、魚影、小屋、コマンド、セーブ |
-| `FishCatalog.cs` | 宇宙魚41種と餌・仕掛け5種の定義・ItemRegistry 登録 |
+| `FishCatalog.cs` | 宇宙魚50種（F001〜F050）と餌・仕掛け5種の定義・ItemRegistry 登録・旧案41種の ID の読み替え |
 | `FishSpawnModel.cs` | 出現モデル（水域・釣り場タグ・時間帯・天候/宇宙現象・餌・日替わり傾向）と水面判定 |
 | `FishFight.cs` | ミニゲームの中身（張力・距離・魚の体力・行動タイプ） |
 | `FishingSession.cs` | 1回の釣り（狙う→着水→待つ→アタリ→やり取り→釣果）と IMGUI 表示 |
@@ -20,13 +20,15 @@
 
 ## 実装した内容（仕様との対応）
 
-- **宇宙魚41種**（§7, §9）：川・池・海・地下湖の通常魚／珍しい魚、天候・宇宙固有現象でだけ現れる魚（光雨のヒカリアメテトラ、星風のホシカゼトビウオ、結晶霞のカスミガラスウオ、花潮で増えるハナビラゴイ等）、伝説の魚5種（固有の行動つき）。
+- **宇宙魚50種**（2026-10-16 から。正：`Docs/Specs/uchujin_no_hoshi_fish_50_design_v0_2.md` ＝モデル制作中の50種 F001〜F050）：一般魚20・個性派魚15・希少魚10・伝説魚5。ID は `fish.f001_marukoro` の形（モデルのフォルダ名と同じ）。
+  名前・外見・生息候補・行動タイプ・修理の候補は原本どおり。価格・希少度・難しさ・大きさ(cm。サイズ区分 XS〜XL から)は【仮数値】。
+  生息候補は、地形生成が付ける釣り場のタグ（`FishCatalog` 冒頭の一覧：瀬・淵・湖の最深部・静かな岸・地下湖の浅い岸など）に置き換えた（マップ設計 v0.2 §8.3）。
+  伝説魚の固有の行動は、今のミニゲームにある5つの伝説の動きのうち原本の説明に一番近いものを当てた【提案】（カガミヌシ＝向きが読めない、ライメイウオ＝持久＋暴走＋潜行、ウズシロ＝潮のように寄せて返す、ガンテイオウ＝固まる、ソラワタリ＝連続ジャンプ）。
+  旧案41種の ID は `FishCatalog.LegacyIds` で一番近い魚へ読み替える（`ItemRegistry.RegisterAlias`。古いセーブの持ち物が消えないように）。釣果帳の旧案の記録は読み替えない（観察した事実を別の魚の記録にしない）。
   Category Fish、GenericConceptId `Concepts.FISH`、タグ `ItemTags.Fish/Ingredient/Edible`＋色タグ＋発光・大きい・小さい・かわいい等。`ModuleData` に `FishSpecies`。
-- **修理用の魚（必須ID）**：
-  - `SharedItemIds.FishFrostFin`（ひやひれ）：温度差に強い膜（タグ `Cooling`, `RocketMaterial`）。早朝・朝・夜、滝つぼ／深み／岩場／冷たい地下湖（3〜6階）、霧・雨で増える、深場の仕掛けを好む。
-  - `SharedItemIds.FishRippleEye`（ゆらめ）：振動・揺らぎを感知する器官（タグ `Sensor`, `Precision`, `RocketMaterial`）。無風の夜の海・池の深み、逆雨・星の光帯で増える、鈴鳴りルアーを好む。深い地下湖（7〜9階）なら時間・天候に関係なく出る。
-  - 低確率待ちにしない手掛かり（ロケット §6, バランス §9.1）：①条件が揃うと出現率が大きく上がる、②釣り場に**魚影**（霜のきらめき／風のない輪の波紋）が見える＝観察の手掛かり、③名人が宇宙語＋身振り（震える・夜空を見上げる・場所を指す）でその魚の話をする、④餌・仕掛けで狙える、⑤地下湖という天候に左右されない別ルート、⑥魚の説明文（主人公のメモ）に生態を記載。
-- **出現条件**（§6, 時間天候 §8）：`Layout.FishingSpots`（水の種類・タグ `deep/rocky/shallow/waterfall/estuary` 等）、時間帯（`DayPart`）、天候（`IWeatherService.GetAt`、雨・霧・強風・無風・晴れ・曇り＋6種の宇宙固有現象）。四季なし。
+- **修理用の魚（原本 §9 の候補魚）**：冷却膜 R03 ＝ F008 シモマダラ（2匹）・F044 ヒヤシウオ（1匹で上質）、振動センサー R06 ＝ F030 ハモリウオ・F041 イワナキ・F043 オトナシ・F045 サザナミメ（どれでも1匹。料理の材料は `Ing.SensorFish`）。ID は `SharedItemIds.FishCoolingCandidates` / `FishSensorCandidates`。
+  - 低確率待ちにしない手掛かり（ロケット §6, バランス §9.1）：①地形生成が候補魚の住める釣り場を必ず作る（冷たい湧水の淵2水域・静かな岸・早瀬など）、②釣り場に**魚影**（冷却の魚は霜のきらめき／振動の魚と伝説魚は輪の波紋）、③名人が宇宙語＋身振りで候補魚の話をして、住める釣り場を指さす、④餌・仕掛けで狙える、⑤地下湖という天候に左右されない別ルート（ヒヤシウオ・イワナキ）、⑥魚の説明文（主人公のメモ）に生態を記載。
+- **出現条件**（§6, 時間天候 §8）：`Layout.FishingSpots`（水の種類＝川・池・**湖**・海・地下湖、タグ）、時間帯（`DayPart`）、天候（`IWeatherService.GetAt`、雨・霧・強風・無風・晴れ・曇り・**雨上がり（雨がやんで5時間以内）・荒天（強風＋雨）・晴れた夜**＋6種の宇宙固有現象）。四季なし。
   **日替わりの傾向**：日付とシードから決定的に、各釣り場で「今日活発な魚」2種（×2.2）と「大物の日」の釣り場1つを決める。
 - **操作**：竿を装備して水辺で道具使用（左クリック/F）、または**餌を手に持って**使用 → `ToolUseRouter` のハンドラ。前方が水でなければ近く（12m）の釣り場の方を自動で向く。
   1. 狙う：往復するメーターをタイミングよく止める（緑の範囲＝魚影の方。狙いどおりだと食いつきが早い）。
@@ -68,7 +70,7 @@
 - **呼ぶ契約**：`IWeatherService.GetAt/Current`、`IResidentDirectory`（`RegisterInteractionProvider`, `Speak`, `FindByJob`, `ActiveResidents`, `GiveMoney`, `ChangeFriendship`, `AddMemory`）、`ITabletService`（`RegisterApp`, `AddMaterial`, `RecordResidentObservation`）。どれも null なら機能を省略。
 - **発行するイベント**：`FishCaughtEvent`（釣った人の端末で。ゲストの釣果はホストでも）、`ToolUpgradedEvent`（竿）。
 - **購読するイベント**：`WeatherChangedEvent`（魚影の更新）、`AreaChangedEvent`（エリア移動で釣りを中止）。
-- **登録するアイテムID**：魚41種（`fish.*`、`SharedItemIds.FishFrostFin`、`SharedItemIds.FishRippleEye`）、餌 `bait.star_worm` `bait.dough` `bait.glow_lure` `bait.deep_sinker` `bait.chime_lure`。
+- **登録するアイテムID**：魚50種（`fish.f001_marukoro` 〜 `fish.f050_sorawatari`。修理用は `SharedItemIds.FishCoolingCandidates` / `FishSensorCandidates`）、餌 `bait.star_worm` `bait.dough` `bait.glow_lure` `bait.deep_sinker` `bait.chime_lure`。
 - **使う他モジュールのID**：竿の強化素材に `SharedItemIds.OreConductive/OreSturdyMetal/OreHeatproofMetal`（未登録なら条件から外す）。
 - **WorldCommand**：`ReportCatchCommand`, `UpgradeRodCommand`, `LessonLearnedCommand`。
 - **鉱山の地下湖**：Mining が `Layout.FishingSpots` に `tags = underground, cave, floor:N, radius:R, (cold/deep/crystal)` の釣り場を追加し、釣りは半径で水面判定する（クラスの直接参照なし）。

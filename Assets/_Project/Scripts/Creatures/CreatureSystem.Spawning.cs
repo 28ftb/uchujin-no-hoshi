@@ -67,6 +67,26 @@ namespace Uchujin.Creatures
             public bool HasArea;
             public string Feature;
             public string Reason;
+            /// <summary>静かな場所か（静かな高台の中で、近くに住民がいない：マップ設計 v0.2 §2.6）。</summary>
+            public bool Quiet;
+        }
+
+        /// <summary>静かな高台の中で、半径40m【仮数値】に住民がいなければ静か。</summary>
+        private bool IsQuietSpot(WorldLayout layout, Vector3 p)
+        {
+            bool inQuiet = false;
+            foreach (var a in layout.Areas)
+                if (a.quiet && a.Contains(p))
+                {
+                    inQuiet = true;
+                    break;
+                }
+            if (!inQuiet) return false;
+            var dir = Game.Service<IResidentDirectory>();
+            if (dir != null)
+                foreach (var r in dir.ActiveResidents)
+                    if (r != null && (r.Position - p).sqrMagnitude < 40f * 40f) return false;
+            return true;
         }
 
         public IEnumerable<WildCreature> WildViews => wildViews.Values;
@@ -165,6 +185,7 @@ namespace Uchujin.Creatures
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 var cand = candidates[rng.Range(0, candidates.Count)];
+                cand.Quiet = IsQuietSpot(layout, cand.Pos);
                 var ws = weather != null ? weather.GetAt(cand.Pos) : WeatherState.Fine;
                 bool onWater = layout.IsWater(cand.Pos);
                 var weights = new List<float>(CreatureDatabase.All.Count);
@@ -267,8 +288,10 @@ namespace Uchujin.Creatures
             float w = RarityWeight[Mathf.Clamp(sp.Rarity, 0, 5)];
             if (cand.HasArea)
             {
-                bool areaOk = System.Array.IndexOf(sp.Areas, cand.Area) >= 0;
-                if (cand.Area == AreaType.Pond || cand.Area == AreaType.Riverside || cand.Area == AreaType.Coast)
+                // 湖の岸は池と同じに扱う（生き物のデータは変えない：マップ設計 v0.2 §2.3）
+                var area = cand.Area == AreaType.Lake ? AreaType.Pond : cand.Area;
+                bool areaOk = System.Array.IndexOf(sp.Areas, area) >= 0;
+                if (area == AreaType.Pond || area == AreaType.Riverside || area == AreaType.Coast)
                     areaOk |= onWater && waterFloater && System.Array.IndexOf(sp.Areas, AreaType.Pond) >= 0;
                 if (!areaOk) return 0f;
             }
@@ -302,6 +325,9 @@ namespace Uchujin.Creatures
                 if (x.speciesId == sp.Id && x.areaId == AreaIds.Overworld && (x.Position - playerPos).sqrMagnitude < NearCountRadius * NearCountRadius) same++;
             if (same >= MaxSameSpeciesNear) return 0f;
 
+            // 静かな高台（ユメボシ「夜の静かな高台」・ホシノコ「生き物たちが静かに集まる場所」）
+            if ((sp.No == 49 || sp.No == 50) && cand.Quiet) w *= 2.5f;
+
             // ホシノコ：生き物たちが静かに集まる夜、または星の光帯の下で（修理の必須条件ではない）
             if (sp.No == 50)
             {
@@ -309,7 +335,7 @@ namespace Uchujin.Creatures
                 foreach (var x in wilds.Values) if ((x.Position - cand.Pos).sqrMagnitude < 30f * 30f) gathered++;
                 int farmCreatures = 0;
                 if (cand.Area == AreaType.Farm) foreach (var c in placed.Values) if (c.placement == CreaturePlacement.Farm) farmCreatures++;
-                bool ok = ws.Has(AlienPhenomenon.StarBand) || gathered >= 6 || farmCreatures >= 5;
+                bool ok = ws.Has(AlienPhenomenon.StarBand) || gathered >= 6 || farmCreatures >= 5 || cand.Quiet;
                 if (!ok) return 0f;
             }
             return w;

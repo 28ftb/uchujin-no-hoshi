@@ -22,6 +22,9 @@ namespace Uchujin.World
         private readonly ulong seed;
         private readonly int attempt;
         private readonly bool relaxed;
+        /// <summary>生成バージョン（星に保存された版。1 なら最初の版のまま作る）。</summary>
+        private readonly int ver;
+        private bool V2 => ver >= 2;
         private GeneratedWorld W;
         private WorldLayout L;
         private Heightfield F;
@@ -31,18 +34,19 @@ namespace Uchujin.World
         private readonly List<PadInfo> footprints = new List<PadInfo>();
         private int seaWaterIndex = -1;
 
-        private string KeyPrefix => "world.gen" + WorldTuning.GeneratorVersion + ".a" + attempt;
+        private string KeyPrefix => "world.gen" + ver + ".a" + attempt;
         private SeededRandom R(string key) => SeededRandom.For(seed, KeyPrefix + "." + key);
 
-        private WorldGenerator(ulong seed, int attempt, bool relaxed)
+        private WorldGenerator(ulong seed, int attempt, bool relaxed, int version)
         {
             this.seed = seed;
             this.attempt = attempt;
             this.relaxed = relaxed;
+            ver = Mathf.Clamp(version, 1, WorldTuning.GeneratorVersion);
         }
 
-        /// <summary>生成（検証に失敗したら決定的に再試行）。</summary>
-        public static GeneratedWorld Generate(ulong seed)
+        /// <summary>生成（検証に失敗したら決定的に再試行）。version は星に保存された生成バージョン（既定は今の版）。</summary>
+        public static GeneratedWorld Generate(ulong seed, int version = WorldTuning.GeneratorVersion)
         {
             GeneratedWorld best = null;
             for (int a = 0; a < WorldTuning.MaxGenerationAttempts; a++)
@@ -51,7 +55,7 @@ namespace Uchujin.World
                 GeneratedWorld g = null;
                 try
                 {
-                    g = new WorldGenerator(seed, a, last).Run();
+                    g = new WorldGenerator(seed, a, last, version).Run();
                 }
                 catch (Exception e)
                 {
@@ -72,11 +76,14 @@ namespace Uchujin.World
 
         private GeneratedWorld Run()
         {
-            W = new GeneratedWorld { Attempt = attempt };
+            W = new GeneratedWorld { Attempt = attempt, Version = ver };
             L = new WorldLayout { WorldSize = WorldTuning.WorldSize };
             W.Layout = L;
-            S = TerrainShape.Create(seed, KeyPrefix, R("shape"));
+            S = TerrainShape.Create(seed, KeyPrefix, R("shape"), ver);
             W.Shape = S;
+            W.HasQuietHighland = S.HasQuiet;
+            W.QuietCenter = S.QuietCenter;
+            W.QuietRadius = S.QuietRadius;
             P = WorldPaletteFactory.Create(SeededRandom.For(seed, "world.palette"));
             W.Palette = P;
             F = new Heightfield(WorldTuning.WorldSize, WorldTuning.GridStep);
@@ -84,7 +91,12 @@ namespace Uchujin.World
 
             FillBase();
             GenerateRivers();
-            GeneratePonds();
+            if (V2)
+            {
+                GenerateForestPondsV2();
+                PlaceHighlandPond();
+            }
+            else GeneratePonds();
             CarveWater();
             AddSeaBody();
 
@@ -148,6 +160,14 @@ namespace Uchujin.World
             var main = MakeRiver(src, mouth, r, 1f, true, -1);
             W.Rivers.Add(main);
 
+            if (V2)
+            {
+                // 生成バージョン2：湖を必ず作り、山から湖へ小川を注ぐ（池へ注ぐ小川の代わり）
+                PlaceLake();
+                GenerateLakeInlet(r);
+                return;
+            }
+
             // 支流（池へ注ぐ小川）【提案：川1〜2本】
             if (r.Chance(WorldTuning.SecondRiverChance))
             {
@@ -179,7 +199,7 @@ namespace Uchujin.World
             }
         }
 
-        private RiverPath MakeRiver(Vector2 src, Vector2 end, SeededRandom r, float widthScale, bool endsInSea, int endPond)
+        private RiverPath MakeRiver(Vector2 src, Vector2 end, SeededRandom r, float widthScale, bool endsInSea, int endPond, float? endSurfaceOverride = null)
         {
             var rp = new RiverPath { EndsInSea = endsInSea, EndPondIndex = endPond };
             var d = end - src;
@@ -201,6 +221,7 @@ namespace Uchujin.World
             }
             float endSurface = 0f;
             if (endPond >= 0) endSurface = W.Ponds[endPond].Surface;
+            if (endSurfaceOverride.HasValue) endSurface = endSurfaceOverride.Value;
             float prev = float.MaxValue;
             for (int i = 0; i < rp.Points.Count; i++)
             {
@@ -226,7 +247,14 @@ namespace Uchujin.World
                     best = i;
                 }
             }
-            if (best > 0 && widthScale >= 1f)
+            if (V2)
+            {
+                // 生成バージョン2：本流には8m以上の滝を必ず作り、勾配2〜4%の所を歩いて渡れる浅瀬にする
+                bool isMain = widthScale >= 1f && endsInSea;
+                if (isMain) ForceWaterfall(rp);
+                MakeFords(rp, isMain);
+            }
+            else if (best > 0 && widthScale >= 1f)
             {
                 for (int j = 0; j < best; j++)
                 {
@@ -313,6 +341,7 @@ namespace Uchujin.World
         {
             foreach (var rv in W.Rivers) CarveRiver(rv);
             foreach (var pd in W.Ponds) CarvePond(pd);
+            foreach (var lk in W.Lakes) CarveLake(lk);
         }
 
         private void CarveRiver(RiverPath rv)
@@ -353,7 +382,8 @@ namespace Uchujin.World
                     float h = F.H[idx];
                     if (best < rr)
                     {
-                        float bed = s - WorldTuning.RiverDepth * (1f - (best / rr) * (best / rr)) - 0.15f;
+                        float extra = Mathf.Lerp(rv.ExtraDepthAt(seg - 1), rv.ExtraDepthAt(seg), segT);
+                        float bed = s - (WorldTuning.RiverDepth + extra) * (1f - (best / rr) * (best / rr)) - 0.15f;
                         h = Mathf.Min(h, bed);
                     }
                     else if (best < rr + 8f)
@@ -509,6 +539,8 @@ namespace Uchujin.World
             var field = F;
             L.HeightSampler = (x, z) => field.SampleGround(x, z);
             L.WaterTester = (x, z) => field.IsWater(x, z);
+            // 深さ0.6mを超える水に入れないのは生成バージョン2の星だけ（版1の星は川を歩いて渡る前提で作られている）
+            if (V2) L.WaterDepthSampler = (x, z) => field.WaterDepth(x, z);
             L.Roads.RebuildAdjacency();
         }
     }

@@ -8,8 +8,24 @@ namespace Uchujin.Core
     {
         private static readonly Dictionary<string, ItemDefinition> items = new Dictionary<string, ItemDefinition>();
         private static readonly List<ItemDefinition> ordered = new List<ItemDefinition>();
+        /// <summary>古いID → 今のID（作り直したアイテムの古いセーブ用。例：旧案の魚41種 → 魚50種）。</summary>
+        private static readonly Dictionary<string, string> aliases = new Dictionary<string, string>();
 
         public static IReadOnlyList<ItemDefinition> All => ordered;
+
+        /// <summary>古いIDを今のIDとして読めるようにする（Get・GetOrPlaceholder が今の定義を返す）。</summary>
+        public static void RegisterAlias(string oldId, string newId)
+        {
+            if (string.IsNullOrEmpty(oldId) || string.IsNullOrEmpty(newId) || oldId == newId) return;
+            aliases[oldId] = newId;
+        }
+
+        /// <summary>古いIDなら今のIDを返す（そうでなければそのまま）。</summary>
+        public static string Resolve(string id)
+        {
+            if (id != null && !items.ContainsKey(id) && aliases.TryGetValue(id, out var to)) return to;
+            return id;
+        }
 
         public static ItemDefinition Register(ItemDefinition def)
         {
@@ -47,11 +63,12 @@ namespace Uchujin.Core
             return Register(def);
         }
 
-        public static bool Exists(string id) => id != null && items.ContainsKey(id);
+        public static bool Exists(string id) => id != null && (items.ContainsKey(id) || aliases.ContainsKey(id));
 
         public static ItemDefinition Get(string id)
         {
             if (id != null && items.TryGetValue(id, out var def)) return def;
+            if (id != null && aliases.TryGetValue(id, out var to) && items.TryGetValue(to, out def)) return def;
             return null;
         }
 
@@ -79,6 +96,7 @@ namespace Uchujin.Core
         {
             items.Clear();
             ordered.Clear();
+            aliases.Clear();
         }
     }
 }

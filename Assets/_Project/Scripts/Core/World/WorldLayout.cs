@@ -24,7 +24,8 @@ namespace Uchujin.World
         Mountain,
         MineEntrance,
         CrashSite,
-        Hill        // 高台（星の光帯を見る・ユメボシ等）
+        Hill,       // 高台（星の光帯を見る・ユメボシ等）。静かな高台は AreaRegion.quiet
+        Lake        // 湖（生成バージョン2〜。生き物の出現では池と同じに扱う）
     }
 
     public enum FacilityType
@@ -50,7 +51,8 @@ namespace Uchujin.World
         Streetlight
     }
 
-    public enum WaterType { River, Pond, Sea }
+    /// <summary>水の種類。Lake は生成バージョン2から（マップ設計 v0.2 §2.3）。</summary>
+    public enum WaterType { River, Pond, Sea, Lake }
 
     [Serializable]
     public class FacilityInfo
@@ -78,6 +80,8 @@ namespace Uchujin.World
         /// <summary>表示名（主人公の呼び名。宇宙語の地名は Language 側で "PLACE:"+id から生成）。</summary>
         public string nameJa;
         public string nameEn;
+        /// <summary>静かな場所（住民の予定では行かない。マップ設計 v0.2 §2.6 の静かな高台など）。</summary>
+        public bool quiet;
 
         public bool Contains(Vector3 p)
         {
@@ -252,11 +256,16 @@ namespace Uchujin.World
         public Func<float, float, float> HeightSampler = (x, z) => 0f;
         /// <summary>水面かどうか。World モジュールが設定。</summary>
         public Func<float, float, bool> WaterTester = (x, z) => false;
+        /// <summary>水深（水面 − 地面。水でなければ 0）。World モジュールが設定（マップ設計 v0.2 §2.7：深さ0.6mまでの浅瀬だけ歩ける）。</summary>
+        public Func<float, float, float> WaterDepthSampler = (x, z) => 0f;
+        /// <summary>歩いて入れる水深の上限（m）【仮数値】。</summary>
+        public const float WadeableDepth = 0.6f;
 
         public float HeightAt(float x, float z) => HeightSampler(x, z);
         public float HeightAt(Vector3 p) => HeightSampler(p.x, p.z);
         public Vector3 OnGround(Vector3 p) => new Vector3(p.x, HeightSampler(p.x, p.z), p.z);
         public bool IsWater(Vector3 p) => WaterTester(p.x, p.z);
+        public float WaterDepthAt(Vector3 p) => WaterDepthSampler(p.x, p.z);
 
         public FacilityInfo GetFacility(FacilityType type)
         {
@@ -295,9 +304,24 @@ namespace Uchujin.World
             foreach (var a in Areas) if (a.type == type) yield return a;
         }
 
+        /// <summary>住民などが行き先に選んでよいエリア（静かな場所は除く。無ければ全部）。</summary>
+        public IEnumerable<AreaRegion> GetVisitableAreas(AreaType type)
+        {
+            bool any = false;
+            foreach (var a in Areas)
+                if (a.type == type && !a.quiet)
+                {
+                    any = true;
+                    yield return a;
+                }
+            if (any) yield break;
+            foreach (var a in Areas) if (a.type == type) yield return a;
+        }
+
+        /// <summary>そのエリアの種類の中の適当な地点（住民の行き先用。静かな場所は選ばない）。</summary>
         public Vector3 RandomPointInArea(AreaType type, Core.SeededRandom rng)
         {
-            var list = new List<AreaRegion>(GetAreas(type));
+            var list = new List<AreaRegion>(GetVisitableAreas(type));
             if (list.Count == 0) return PlayerSpawn;
             var a = rng.Pick(list);
             for (int i = 0; i < 12; i++)
