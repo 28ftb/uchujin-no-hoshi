@@ -243,11 +243,53 @@ namespace Uchujin.World
         private readonly Dictionary<int, Bucket> buckets = new Dictionary<int, Bucket>();
         private readonly PaletteAtlas atlas;
         private readonly float chunkSize;
+        private readonly bool discard;
 
-        public MeshBatcher(PaletteAtlas atlas, float chunkSize)
+        /// <summary>これまでに加えた三角形の数（確認用のログに使う）。</summary>
+        public int TriangleCount { get; private set; }
+
+        /// <summary>何も加えない結合器（モデルで描く自然物の、従来のプリミティブを捨てる時に使う）。</summary>
+        public static readonly MeshBatcher Discard = new MeshBatcher(null, 1f, true);
+
+        public MeshBatcher(PaletteAtlas atlas, float chunkSize) : this(atlas, chunkSize, false) { }
+
+        private MeshBatcher(PaletteAtlas atlas, float chunkSize, bool discard)
         {
             this.atlas = atlas;
             this.chunkSize = chunkSize;
+            this.discard = discard;
+        }
+
+        private Bucket BucketAt(Vector3 pos)
+        {
+            int key = Key(pos);
+            if (!buckets.TryGetValue(key, out var b))
+            {
+                b = new Bucket();
+                buckets[key] = b;
+            }
+            return b;
+        }
+
+        /// <summary>
+        /// 任意のメッシュの部品（頂点・法線・三角形）を1色で加える。m は部品の頂点からワールドへの変換。
+        /// チャンクは pos（置く位置）で決める。モデルで描く自然物（NatureModels）で使う。
+        /// </summary>
+        public void AddMesh(Vector3[] verts, Vector3[] norms, int[] tris, Matrix4x4 m, Vector3 pos, Color color)
+        {
+            if (discard) return;
+            var nm = m.inverse.transpose;
+            var b = BucketAt(pos);
+            var uv = atlas.UV(color);
+            int baseIndex = b.V.Count;
+            for (int i = 0; i < verts.Length; i++)
+            {
+                b.V.Add(m.MultiplyPoint3x4(verts[i]));
+                b.N.Add(nm.MultiplyVector(norms[i]).normalized);
+                b.UV.Add(uv);
+            }
+            for (int i = 0; i < tris.Length; i++) b.T.Add(baseIndex + tris[i]);
+            TriangleCount += tris.Length / 3;
         }
 
         private int Key(Vector3 p)
@@ -259,15 +301,11 @@ namespace Uchujin.World
 
         public void Add(LowPoly.Shape shape, Vector3 pos, Quaternion rot, Vector3 scale, Color color)
         {
+            if (discard) return;
             var mesh = LowPoly.Get(shape);
             var m = Matrix4x4.TRS(pos, rot, scale);
             var nm = m.inverse.transpose;
-            int key = Key(pos);
-            if (!buckets.TryGetValue(key, out var b))
-            {
-                b = new Bucket();
-                buckets[key] = b;
-            }
+            var b = BucketAt(pos);
             var uv = atlas.UV(color);
             var verts = mesh.vertices;
             var norms = mesh.normals;
@@ -280,6 +318,7 @@ namespace Uchujin.World
                 b.UV.Add(uv);
             }
             for (int i = 0; i < tris.Length; i++) b.T.Add(baseIndex + tris[i]);
+            TriangleCount += tris.Length / 3;
         }
 
         /// <summary>結合メッシュの GameObject を作る。</summary>

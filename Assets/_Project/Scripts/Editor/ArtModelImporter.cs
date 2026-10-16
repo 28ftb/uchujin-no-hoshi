@@ -20,7 +20,10 @@ namespace Uchujin.EditorTools
         private const string Folder = "Assets/_Project/Resources/Art/";
 
         /// <summary>取り込み方を変えたら上げる（上げると Art の FBX がすべて取り込み直される）。</summary>
-        public override uint GetVersion() => 2;
+        public override uint GetVersion() => 3;
+
+        /// <summary>自然物は実行時にメッシュの頂点を読んで結合メッシュへ入れる（NatureModels）ので Read/Write を有効にする。</summary>
+        private const string ReadableFolder = Folder + "Nature/";
 
         /// <summary>URP の FBX 材質の前処理より後に、色・発光を上書きする。</summary>
         public override int GetPostprocessOrder() => 100;
@@ -36,6 +39,7 @@ namespace Uchujin.EditorTools
             importer.importLights = false;
             importer.importBlendShapes = false;
             importer.importVisibility = false;
+            importer.isReadable = assetPath.StartsWith(ReadableFolder);
             importer.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription;
             importer.animationType = ModelImporterAnimationType.None;
             importer.importAnimation = false;

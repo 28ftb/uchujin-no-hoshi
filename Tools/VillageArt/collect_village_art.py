@@ -5,6 +5,7 @@
   props/<小物>/<小物>.fbx                                    … 街灯・橋・看板（＋矢印板）・花壇・ベンチ・広場の目印
   tablet/tablet_before.fbx, tablet_after.fbx                   … 主人公のタブレット（修理前・修理後、幅 0.40 m）
   rocket/before|after/spaceship.glb                            … ロケット（修理前・修理後）。FBX が無いのでここで書き出す
+  nature/<グループ>/<種類>.fbx                                 … 自然物13種（木5種・茂み・花・葦・岩・大岩・結晶・キノコ・光るキノコ）
 
 FBX はどれも Blender の −Y 正面・Z 上を Forward −Z / Up Y / FBX_SCALE_ALL で書き出したもの（住民100人のモデルと同じ）。
 
@@ -58,7 +59,12 @@ def main() -> None:
     for state in ("before", "after"):
         copy(SRC / "tablet" / f"tablet_{state}.fbx", DST / "Tablet" / f"tablet_{state}.fbx")
         export_rocket(SRC / "rocket" / state / "spaceship.glb", DST / "Rocket" / f"rocket_{state}.fbx")
-    print(f"COLLECTED houses={len(houses)} -> {DST}")
+    nature = sorted(SRC.glob("nature/*/*.fbx"))
+    if len(nature) != 13:
+        raise RuntimeError(f"自然物の FBX が13個ありません: {len(nature)}")
+    for f in nature:
+        copy(f, DST / "Nature" / f.name)
+    print(f"COLLECTED houses={len(houses)} nature={len(nature)} -> {DST}")
 
 
 main()

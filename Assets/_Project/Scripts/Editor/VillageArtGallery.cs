@@ -134,6 +134,50 @@ namespace Uchujin.EditorTools
                 Shoot(root, Path.Combine(dir, "rockets.png"), new Vector3(0f, 5f, 22f), new Vector3(0f, 3.4f, 0f), 1600, 1000, 40f);
                 rockets.gameObject.SetActive(false);
 
+                // ---- 自然物（NatureBuilder と同じ結合メッシュ。2つの星のパレットで色の違いを見る） ----
+                var natureRoot = new GameObject("Nature").transform;
+                natureRoot.SetParent(root.transform, false);
+                var atlas = new PaletteAtlas();
+                var lit = WorldMaterials.Textured(atlas.Texture, 0.1f);
+                var glow = WorldMaterials.Textured(atlas.Texture, 0.3f, true, 1.1f);
+                var kinds = new[]
+                {
+                    NatureKind.TreeRound, NatureKind.TreeTall, NatureKind.TreeMushroom, NatureKind.TreeLollipop, NatureKind.TreeCrystal,
+                    NatureKind.Bush, NatureKind.Rock, NatureKind.Boulder, NatureKind.Crystal, NatureKind.Reed,
+                    NatureKind.Flower, NatureKind.Mushroom, NatureKind.GlowMushroom,
+                };
+                for (int field = 0; field < 2; field++)
+                {
+                    var palette = Uchujin.World.WorldPaletteFactory.Create(new Uchujin.Core.SeededRandom((ulong)(1234 + field * 777)));
+                    var batch = new MeshBatcher(atlas, 100f);
+                    var glowBatch = new MeshBatcher(atlas, 100f);
+                    for (int i = 0; i < kinds.Length; i++)
+                    {
+                        var it = new NatureItem
+                        {
+                            Kind = kinds[i],
+                            Position = new Vector3((field == 0 ? -34f : 6f) + (i % 5) * 6.5f, 0f, -(i / 5) * 7f),
+                            Yaw = i * 37f,
+                            Scale = 1f,
+                            Variant = i + field,
+                        };
+                        if (!NatureModels.Add(it, palette, batch, glowBatch))
+                        {
+                            problems++;
+                            report.AppendLine(kinds[i] + " NG: 自然物のモデルを読めない");
+                        }
+                        else if (field == 0) report.AppendLine(kinds[i] + " OK（自然物のモデル）");
+                    }
+                    batch.Build(natureRoot, lit, "Nature" + field);
+                    glowBatch.Build(natureRoot, glow, "NatureGlow" + field);
+                }
+                var natureRes = new GameObject("Resident").transform;
+                natureRes.SetParent(natureRoot, false);
+                natureRes.localPosition = new Vector3(-20f, 0f, 3f);
+                ResidentModelBuilder.Build(natureRes, "0101");
+                Shoot(root, Path.Combine(dir, "nature.png"), new Vector3(-6f, 16f, 26f), new Vector3(-6f, 1f, -6f), 2400, 1000, 55f);
+                natureRoot.gameObject.SetActive(false);
+
                 // ---- 主人公が持つタブレット（修理前・修理後） ----
                 var players = new GameObject("Players").transform;
                 players.SetParent(root.transform, false);
