@@ -160,7 +160,45 @@ namespace Uchujin.EditorTools
                         if (rocket != null) g.LocalPlayer.Position = rocket.RocketPosition + new Vector3(6f, 0.5f, 6f);
                     }
                     if (At(4, 11f)) Shot("05_rocket");
-                    if (At(5, 12f)) Stage = 4;
+                    // 生成バージョン3：村の端のゲート → 花の野道 → 湖の森（ゲートの範囲に入ると移るか）
+                    if (At(5, 12f))
+                    {
+                        var gate = GameObject.Find("Gate_gate.r1.t1");
+                        if (gate != null)
+                        {
+                            g.LocalPlayer.Position = gate.transform.position - gate.transform.forward * 9f + Vector3.up * 0.3f;
+                            g.LocalPlayer.Avatar.rotation = Quaternion.LookRotation(gate.transform.forward);
+                        }
+                        else Log("村のゲートが見つからない");
+                    }
+                    if (At(6, 14.5f)) Shot("04c_village_gate");
+                    if (At(7, 15f))
+                    {
+                        var gate = GameObject.Find("Gate_gate.r1.t1");
+                        if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
+                    }
+                    if (At(8, 17f)) Log("村のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                    if (At(9, 19f)) Shot("04d_t1");
+                    if (At(10, 19.5f))
+                    {
+                        var gate = GameObject.Find("Gate_gate.t1.r2");
+                        if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
+                        else Log("花の野道の湖の森側のゲートが見つからない");
+                    }
+                    if (At(11, 22f)) Log("花の野道の先のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                    if (At(12, 24f)) Shot("04e_r2");
+                    if (At(13, 24.5f))
+                    {
+                        var pier = GameObject.Find("LakePier");
+                        if (pier != null)
+                        {
+                            g.LocalPlayer.Position = pier.transform.position + pier.transform.forward * 6f + Vector3.up * 0.5f;
+                            g.LocalPlayer.Avatar.rotation = Quaternion.LookRotation(pier.transform.forward);
+                        }
+                    }
+                    if (At(14, 27f)) Shot("04f_r2_lake");
+                    if (At(15, 27.5f) && g.LocalPlayer.CurrentAreaId != AreaIds.Overworld) g.Areas.Transition(g.LocalPlayer, AreaIds.Overworld);
+                    if (At(16, 29f)) Stage = 4;
                     break;
                 case 4: // 住民と会話
                 {

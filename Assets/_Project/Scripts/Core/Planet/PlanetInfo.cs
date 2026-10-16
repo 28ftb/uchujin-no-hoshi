@@ -10,7 +10,7 @@ namespace Uchujin.Core
     [Serializable]
     public class PlanetInfo
     {
-        public const int CurrentWorldGenVersion = 2;
+        public const int CurrentWorldGenVersion = 3;
         public const int CurrentLanguageGenVersion = 1;
 
         public string worldId;

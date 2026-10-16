@@ -38,6 +38,8 @@ namespace Uchujin.World
         private readonly Dictionary<string, GameObject> projectObjects = new Dictionary<string, GameObject>();
         private readonly List<(SignInfo info, SignBoard board)> signs = new List<(SignInfo, SignBoard)>();
         private readonly Dictionary<string, string> placeWordCache = new Dictionary<string, string>();
+        /// <summary>村の外のマップ（生成バージョン3）のために作ったテクスチャ・マテリアル（Teardown で捨てる）。</summary>
+        private readonly List<UnityEngine.Object> fieldOwned = new List<UnityEngine.Object>();
         private bool subscribed;
         private bool appRegistered;
         private bool colorMapDirty;
@@ -157,6 +159,12 @@ namespace Uchujin.World
                 }
                 catch (Exception e) { Debug.LogError("[World] 滝の裏の洞の生成に失敗: " + e); }
             }
+            // 村の端のゲートと、村の外の地域・道中マップ（生成バージョン3の試作。マップ設計 v0.3）
+            if (g.VillageGates.Count > 0 || g.FieldMaps.Count > 0)
+            {
+                try { FieldMapBuilder.BuildAll(g, worldRoot, atlas, natureMat, natureGlowMat, PlaceWord, fieldOwned); }
+                catch (Exception e) { Debug.LogError("[World] 村の外のマップの生成に失敗: " + e); }
+            }
         }
 
         private void RegisterOverworld()
@@ -214,6 +222,8 @@ namespace Uchujin.World
             if (natureMat != null) UnityEngine.Object.Destroy(natureMat);
             if (natureGlowMat != null) UnityEngine.Object.Destroy(natureGlowMat);
             if (atlas != null) UnityEngine.Object.Destroy(atlas.Texture);
+            foreach (var o in fieldOwned) if (o != null) UnityEngine.Object.Destroy(o);
+            fieldOwned.Clear();
             MapTexture = null;
             FogTexture = null;
             atlas = null;

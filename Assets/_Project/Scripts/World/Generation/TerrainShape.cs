@@ -35,10 +35,12 @@ namespace Uchujin.World
 
         private WorldNoise baseN, coastN, ridgeN, forestN, flowerN, rockN, detailN;
 
-        public static TerrainShape Create(ulong seed, string attemptKey, SeededRandom r, int version = 1)
+        /// <param name="seaAngle">海の方角（ラジアン）。生成バージョン3は星の骨格の値を渡す（乱数の並びは変えない）。</param>
+        public static TerrainShape Create(ulong seed, string attemptKey, SeededRandom r, int version = 1, float? seaAngle = null)
         {
             var s = new TerrainShape();
             float ang = r.Range(0f, Mathf.PI * 2f);
+            if (seaAngle.HasValue) ang = seaAngle.Value;
             s.SeaDir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
             s.Perp = new Vector2(-s.SeaDir.y, s.SeaDir.x);
             s.CoastDist = r.Range(WorldTuning.CoastDistMin, WorldTuning.CoastDistMax);

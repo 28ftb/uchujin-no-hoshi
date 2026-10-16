@@ -757,6 +757,7 @@ namespace Uchujin.World
             if (RectRoughness(L.FarmRect) > 1.2f) W.Notes.Add("農場が平らでない");
             if (L.IsWater(L.PlayerSpawn)) W.Notes.Add("開始地点が水の中");
             if (V2) ValidateV2();
+            if (V3) ValidateV3();
 
             W.Valid = W.Notes.Count == 0;
             if (!W.Valid && relaxed)

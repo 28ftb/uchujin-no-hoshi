@@ -62,7 +62,11 @@ namespace Uchujin.World
                     Debug.LogWarning($"[World] 生成 試行{a} で例外: {e}");
                     continue;
                 }
-                if (g.Valid) return g;
+                if (g.Valid)
+                {
+                    if (version >= 3) AttachFieldMaps(g, seed);
+                    return g;
+                }
                 Debug.Log($"[World] 生成 試行{a} は検証で不採用: {string.Join(" / ", g.Notes)}");
                 if (best == null || g.Notes.Count < best.Notes.Count) best = g;
             }
@@ -70,6 +74,7 @@ namespace Uchujin.World
             {
                 Debug.LogWarning("[World] すべての試行で検証に問題がありました。最も問題の少ない結果を使います。");
                 best.Valid = true;
+                if (version >= 3) AttachFieldMaps(best, seed);
             }
             return best;
         }
@@ -79,7 +84,13 @@ namespace Uchujin.World
             W = new GeneratedWorld { Attempt = attempt, Version = ver };
             L = new WorldLayout { WorldSize = WorldTuning.WorldSize };
             W.Layout = L;
-            S = TerrainShape.Create(seed, KeyPrefix, R("shape"), ver);
+            // 生成バージョン3：星の骨格を先に決め、村の海の方角を骨格に合わせる（§8.1）
+            if (V3)
+            {
+                skel = StarSkeleton.Create(seed);
+                W.Skeleton = skel;
+            }
+            S = TerrainShape.Create(seed, KeyPrefix, R("shape"), ver, V3 ? skel.SeaBearing : (float?)null);
             W.Shape = S;
             W.HasQuietHighland = S.HasQuiet;
             W.QuietCenter = S.QuietCenter;
@@ -108,6 +119,7 @@ namespace Uchujin.World
             PlaceLookout();
             PlaceFishingHut();
             PlacePier();
+            if (V3) PlaceVillageGatesV3();
 
             BuildRoads();
             PlaceSatelliteFacilities();
@@ -116,6 +128,7 @@ namespace Uchujin.World
             PlaceSigns();
             PlanProjects();
             FinalizeTerrain();
+            if (V3) SettleVillageGatesV3();
 
             PlaceNature();
             BuildFishingSpots();

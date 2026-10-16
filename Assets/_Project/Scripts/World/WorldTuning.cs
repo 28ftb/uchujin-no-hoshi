@@ -11,8 +11,39 @@ namespace Uchujin.World
         // ---- 生成バージョン（村仕様 §1.3：生成済みの星の地形を勝手に変えない） ----
         /// <summary>このコードが生成する地形の版。PlanetInfo.worldGenVersion と比較する。</summary>
         /// <remarks>1：最初の版（湖なし）。2：マップ設計 v0.2 の設計決定（湖・静かな高台・8m以上の滝と滝の裏の洞・必ず作る桟橋・川の区間・種ごとの検証）。
-        /// 版1で作った星は版1のまま作り直す（地形を勝手に変えない）。</remarks>
-        public const int GeneratorVersion = 2;
+        /// 3：マップ設計 v0.3 の試作（星の骨格、村の端のゲート、別マップの T1 花の野道・R2 湖の森）。村の地形は版2の作り方のまま。
+        /// 版1・版2で作った星はその版のまま作り直す（地形を勝手に変えない）。</remarks>
+        public const int GeneratorVersion = 3;
+
+        // ---- 生成バージョン3（マップ設計 v0.3。地域マップ＋道中マップの試作）【仮数値】 ----
+        /// <summary>地域・道中マップを置く座標（1枚目）と、マップどうしの間隔（屋外・鉱山・家・滝の裏の洞から離す）。</summary>
+        public static readonly Vector3 FieldMapOriginBase = new Vector3(-4000f, 0f, 3200f);
+        public const float FieldMapSpacing = 800f;
+        /// <summary>1枚のマップの作り直しの上限。</summary>
+        public const int FieldMapMaxAttempts = 6;
+        /// <summary>道中・地域マップの本道と脇道の幅の半分（m）。</summary>
+        public const float FieldRoadHalfWidth = 1.9f;
+        public const float FieldTrailHalfWidth = 0.9f;
+        /// <summary>ゲートを遊べる範囲の端から何m内側に置くか、となりのマップから来た時にゲートから何m先に立つか。</summary>
+        public const float FieldGateInset = 4f;
+        public const float FieldGateArrival = 7f;
+        /// <summary>ゲートに入ったと判定する範囲（横の半分・奥行きの半分。m）。</summary>
+        public const float FieldGateHalfWidth = 4.5f;
+        public const float FieldGateHalfDepth = 3f;
+        /// <summary>ゲートの地面の高さと骨格の高さの差の許容（m。§10.5 は 0.2m）。</summary>
+        public const float FieldGateHeightTolerance = 0.25f;
+        /// <summary>歩いて行けるかの検証：隣のグリッド点（2m）との高さの差の上限（約40°）。</summary>
+        public const float FieldWalkMaxStep = 1.7f;
+        /// <summary>走る速さ（m/秒。PlayerController.runSpeed と同じ）。</summary>
+        public const float RunSpeed = 8f;
+        /// <summary>道中の本道を走り抜ける時間の上限（秒。§3.3 は 30〜35秒、§10.5 は 40秒以内）。</summary>
+        public const float FieldRouteMaxSeconds = 38f;
+        /// <summary>地域マップのゲートから主な場所（湖の岬など）までの上限（秒）。</summary>
+        public const float FieldRegionMaxSeconds = 26f;
+        /// <summary>村のゲートを置く位置（村の中心から、端の手前までの距離。見えない壁の内側）。</summary>
+        public const float VillageGateInset = 11f;
+        /// <summary>広場から村のゲートまでの道のりの上限（m）。</summary>
+        public const float MaxPathPlazaToGate = 300f;
 
         // ---- 生成バージョン2（マップ設計 v0.2 §2）【仮数値】 ----
         /// <summary>必ず作る滝の最低の落差（m）。</summary>

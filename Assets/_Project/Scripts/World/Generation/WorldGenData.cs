@@ -272,6 +272,14 @@ namespace Uchujin.World
         public int HighlandPondIndex = -1;
         /// <summary>滝の裏の洞（生成バージョン2）。</summary>
         public WaterfallCaveInfo Cave;
+        /// <summary>星の骨格（生成バージョン3。マップ設計 v0.3 §8.1）。</summary>
+        public StarSkeleton Skeleton;
+        /// <summary>村の端のゲート（生成バージョン3）。</summary>
+        public readonly List<FieldGateInfo> VillageGates = new List<FieldGateInfo>();
+        /// <summary>村のゲートの方角と、骨格の方角のずれ（度。検査用）。</summary>
+        public float VillageGateAngleError;
+        /// <summary>村の外の地域・道中マップ（生成バージョン3。試作では T1 花の野道と R2 湖の森）。</summary>
+        public readonly List<FieldMap> FieldMaps = new List<FieldMap>();
         public bool HasPier;
         public Vector3 PierStart;
         public Vector3 PierEnd;

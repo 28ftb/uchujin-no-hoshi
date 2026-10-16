@@ -144,6 +144,11 @@ namespace Uchujin.Core
         public static string MineFloor(int floor) => "mine:" + floor;
         public static string ResidentHouse(string residentId) => "house:" + residentId;
         public static bool IsMine(string areaId) => areaId != null && areaId.StartsWith("mine:");
+        /// <summary>村の外の地域マップ・道中マップ（生成バージョン3。マップ設計 v0.3）。屋外として扱う。</summary>
+        public static string FieldMap(string mapId) => "map:" + mapId;
+        public static bool IsFieldMap(string areaId) => areaId != null && areaId.StartsWith("map:");
+        /// <summary>地上（村か、村の外の地域・道中のマップ）。</summary>
+        public static bool IsSurface(string areaId) => areaId == Overworld || IsFieldMap(areaId);
         public static int MineFloorOf(string areaId)
         {
             if (!IsMine(areaId)) return 0;

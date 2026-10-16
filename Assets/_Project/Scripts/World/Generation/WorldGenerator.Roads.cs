@@ -115,6 +115,7 @@ namespace Uchujin.World
             }
             if (W.HasPier) dests.Add((GeoUtil.XZ(W.PierStart), "pier"));
             if (V2 && W.Lakes.Count > 0) dests.Add((W.Lakes[0].SpitBase, "lake"));
+            if (V3) foreach (var vg in W.VillageGates) dests.Add((new Vector2(vg.Position.x, vg.Position.z), vg.Id));
             dests.Sort((a, b) => Vector2.Distance(a.p, plaza).CompareTo(Vector2.Distance(b.p, plaza)));
             foreach (var d in dests) Route(plaza, d.p, d.id, true);
 

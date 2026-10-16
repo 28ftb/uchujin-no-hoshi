@@ -71,16 +71,21 @@ namespace Uchujin.Core
             {
                 Player.Position = Game.Instance.Layout.OnGround(Game.Instance.Layout.PlayerSpawn) + Vector3.up;
             }
+            else if (transform.position.y < -200f && AreaIds.IsFieldMap(Player.CurrentAreaId))
+            {
+                // 村の外のマップ（生成バージョン3）：そのマップの入口（村側のゲートの前）へ戻す
+                Game.Instance.Areas.Transition(Player, Player.CurrentAreaId);
+            }
         }
 
         /// <summary>
         /// 深さ0.6mを超える水へは入らない（泳ぎは無い。マップ設計 v0.2 §2.7）。橋の上・浅瀬は通れる。
         /// 今いる所より深くなる向きだけ止め、壁沿いのように横へは滑らせる。すでに深い所にいても浅い方へは出られる。
-        /// 水深は WorldLayout.WaterDepthSampler（生成バージョン2の星だけ設定される）。
+        /// 水深は WorldLayout.WaterDepthSampler（生成バージョン2から設定される。版3では村の外のマップも含む）。
         /// </summary>
         private Vector3 LimitWading(Vector3 move)
         {
-            if (move.sqrMagnitude < 1e-4f || Player == null || Player.CurrentAreaId != AreaIds.Overworld) return move;
+            if (move.sqrMagnitude < 1e-4f || Player == null || !AreaIds.IsSurface(Player.CurrentAreaId)) return move;
             var layout = Game.Instance != null ? Game.Instance.Layout : null;
             if (layout == null) return move;
             var pos = transform.position;
