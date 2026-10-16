@@ -20,6 +20,10 @@ namespace Uchujin.World
         public readonly List<float> Depth = new List<float>();
         /// <summary>歩いて渡れる浅瀬（飛び石）の点の番号。</summary>
         public readonly List<int> Fords = new List<int>();
+        /// <summary>小さな滝（水面が段で落ちる所）の、落ちた先＝滝つぼの点の番号。</summary>
+        public readonly List<int> Falls = new List<int>();
+        /// <summary>冷たい湧水の淵の点の番号（無ければ -1）。</summary>
+        public int SpringIndex = -1;
     }
 
     /// <summary>マップの中の目印の場所（寄り道ポケット・東屋・隠れた場所など。検証と配置の確認に使う）。</summary>
@@ -34,7 +38,7 @@ namespace Uchujin.World
         public bool Hidden;
     }
 
-    public enum FieldStructureKind { Gazebo, Pier, SteppingStone, Bench, Crystal, Signpost, Lantern }
+    public enum FieldStructureKind { Gazebo, Pier, SteppingStone, Bench, Crystal, Signpost, Lantern, Ruin }
 
     /// <summary>マップに置く小さな建て物（東屋・桟橋・飛び石・道標など）。座標はマップのローカル。</summary>
     public sealed class FieldStructure
@@ -97,6 +101,10 @@ namespace Uchujin.World
         public readonly List<Vector2> Road = new List<Vector2>();
         /// <summary>脇道（細い道）。</summary>
         public readonly List<List<Vector2>> Trails = new List<List<Vector2>>();
+        /// <summary>枝道（本道と同じ幅。地域マップで本道から別のゲートへ向かう道など）。</summary>
+        public readonly List<List<Vector2>> Branches = new List<List<Vector2>>();
+        /// <summary>本道の坂の目安（道を均す時の上限。坂道の道中は少しきつい）。</summary>
+        public float RoadGrade = 0.08f;
         public readonly List<FieldStream> Streams = new List<FieldStream>();
         public readonly List<PondInfo> Ponds = new List<PondInfo>();
         public LakeInfo Lake;
@@ -242,6 +250,7 @@ namespace Uchujin.World
         public float DistToPaths(Vector2 p, bool includeTrails = true)
         {
             float best = DistToPolyline(p, Road);
+            foreach (var b in Branches) best = Mathf.Min(best, DistToPolyline(p, b));
             if (includeTrails)
                 foreach (var t in Trails) best = Mathf.Min(best, DistToPolyline(p, t));
             return best;

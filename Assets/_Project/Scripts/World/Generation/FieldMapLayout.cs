@@ -44,6 +44,7 @@ namespace Uchujin.World
             BuildWaters(m, L);
             if (m.Id == StarSkeleton.FlowerPath) AreasFlowerPath(m, L);
             else if (m.Id == StarSkeleton.LakeForest) AreasLakeForest(m, L);
+            else if (m.Id == StarSkeleton.StreamSlope) AreasStreamSlope(m, L);
             BuildSpots(m, L);
             BuildHabitats(m, L);
             return L;
@@ -127,6 +128,17 @@ namespace Uchujin.World
                 Area(L, "area.t1.pond" + p, AreaType.Pond, G(m, m.Ponds[p].Center), m.Ponds[p].Radius + 5f, "野の池", "Meadow pond");
         }
 
+        private static void AreasStreamSlope(FieldMap m, WorldLayout L)
+        {
+            var center = new Vector2(m.Width * 0.5f, m.Depth * 0.5f);
+            Area(L, "area.t3.valley", AreaType.Forest, G(m, center), new Vector2(m.Width, m.Depth).magnitude * 0.5f + 12f, "渓流の谷", "Stream valley");
+            foreach (var st in m.Streams) StreamAreas(m, L, st, "渓流", "Mountain stream");
+            var ruins = m.GetPlace("t3.ruins");
+            if (ruins != null) Area(L, "area.t3.ruins", AreaType.Mountain, G(m, ruins.Local), 9f, "石積みの跡", "Old stonework");
+            var shelf = m.GetPlace("t3.shelf");
+            if (shelf != null) Area(L, "area.t3.shelf", AreaType.Mountain, G(m, shelf.Local), 10f, "滝の上の岩棚", "Rock shelf");
+        }
+
         private static void AreasLakeForest(FieldMap m, WorldLayout L)
         {
             var center = new Vector2(m.Width * 0.5f, m.Depth * 0.5f);
@@ -174,9 +186,11 @@ namespace Uchujin.World
 
         private static void BuildSpots(FieldMap m, WorldLayout L)
         {
-            // 小川：瀬・浅瀬（§6.2：T1 小川の瀬・浅瀬、R2 の流れ込み・流れ出し）
+            // 小川・渓流：流れの勾配で 急流・早瀬・瀬・よどみ を分け、滝つぼと湧水の淵には必ず釣り場を置く（§6.2）
             foreach (var st in m.Streams)
             {
+                foreach (var f in st.Falls) StreamSpot(m, L, st, f, "fall" + f, "waterfall", "pool", "deep", "rocky");
+                if (st.SpringIndex >= 0) StreamSpot(m, L, st, st.SpringIndex, "spring", "spring", "cold", "pool", "deep");
                 int n = 0;
                 float acc = 99f;
                 for (int i = 1; i < st.Points.Count - 1; i++)
@@ -194,9 +208,15 @@ namespace Uchujin.World
                     var s = Spot(L, $"spot.{st.Id}.{n++}", null, WaterType.River, G(m, stand), W(m, p, st.Surface[i]));
                     s.tags.Add("river");
                     s.tags.Add("stream");
-                    s.tags.Add("shallow");
-                    s.tags.Add(st.Fords.Contains(i) || n % 3 != 0 ? "riffle" : "slack");
-                    if (n % 4 == 1) s.tags.Add("weed");
+                    s.tags.Add(st.Depth[i] >= 1f ? "deep" : "shallow");
+                    float grad = Gradient(st, i);
+                    if (st.Fords.Contains(i)) s.tags.Add("riffle");
+                    else if (grad >= 0.06f) s.tags.Add("rapids");
+                    else if (grad >= 0.04f) s.tags.Add("fast");
+                    else if (grad >= 0.02f || n % 3 != 0) s.tags.Add("riffle");
+                    else s.tags.Add("slack");
+                    if (grad < 0.04f && n % 4 == 1) s.tags.Add("weed");
+                    if (m.Slope(stand.x, stand.y) > 24f || m.PaintAt(stand.x, stand.y) == FieldPaint.Rock) s.tags.Add("rocky");
                     if (m.PaintAt(stand.x, stand.y) == FieldPaint.Forest || m.PaintAt(stand.x, stand.y) == FieldPaint.WetForest) s.tags.Add("forest");
                     if (m.Lake != null && st.Id.EndsWith("inlet") && Vector2.Distance(p, m.Lake.Inlet) < 26f) s.tags.Add("turbid");
                 }
@@ -235,6 +255,29 @@ namespace Uchujin.World
                 }
             }
             if (m.Lake != null) LakeSpots(m, L);
+        }
+
+        /// <summary>小川の点のまわりの水面の勾配（上流と下流の4点ずつで見る）。</summary>
+        private static float Gradient(FieldStream st, int i)
+        {
+            int a = Mathf.Max(0, i - 4), b = Mathf.Min(st.Points.Count - 1, i + 4);
+            float dist = 0f;
+            for (int k = a + 1; k <= b; k++) dist += Vector2.Distance(st.Points[k - 1], st.Points[k]);
+            return dist < 1f ? 0f : Mathf.Abs(st.Surface[a] - st.Surface[b]) / dist;
+        }
+
+        /// <summary>小川の決まった点（滝つぼ・湧水の淵）の釣り場。</summary>
+        private static void StreamSpot(FieldMap m, WorldLayout L, FieldStream st, int i, string key, params string[] tags)
+        {
+            if (i <= 0 || i >= st.Points.Count - 1) return;
+            var p = st.Points[i];
+            var dir = (st.Points[i + 1] - st.Points[i - 1]).normalized;
+            var side = new Vector2(-dir.y, dir.x);
+            if (!StandNear(m, p, side, st.Radius[i] * 0.8f, st.Radius[i] + 5f, out var stand) && !StandNear(m, p, -side, st.Radius[i] * 0.8f, st.Radius[i] + 5f, out stand)) return;
+            var s = Spot(L, $"spot.{st.Id}.{key}", null, WaterType.River, G(m, stand), W(m, p, st.Surface[i]));
+            s.tags.Add("river");
+            s.tags.Add("stream");
+            foreach (var t in tags) s.tags.Add(t);
         }
 
         /// <summary>湖：岸のまわり24方向＋岬の先（最深部）と岬の脇（v0.2 の湖の釣り場と同じ作り）。</summary>

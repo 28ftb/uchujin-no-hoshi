@@ -177,7 +177,12 @@ namespace Uchujin.EditorTools
                         var gate = GameObject.Find("Gate_gate.r1.t1");
                         if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
                     }
-                    if (At(8, 17f)) Log("村のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                    if (At(8, 17f))
+                    {
+                        Log("村のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                        // 起伏が分かるように、引いて斜めから撮る
+                        if (CameraRig.Instance != null) { CameraRig.Instance.pitch = 30f; CameraRig.Instance.distance = 46f; }
+                    }
                     if (At(9, 24f))
                     {
                         Shot("04d_t1");
@@ -186,14 +191,20 @@ namespace Uchujin.EditorTools
                     }
                     if (At(10, 24.5f))
                     {
+                        if (CameraRig.Instance != null) CameraRig.Instance.ApplyModeDefaults();
                         var gate = GameObject.Find("Gate_gate.t1.r2");
                         if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
                         else Log("花の野道の湖の森側のゲートが見つからない");
                     }
-                    if (At(11, 27f)) Log("花の野道の先のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                    if (At(11, 27f))
+                    {
+                        Log("花の野道の先のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                        if (CameraRig.Instance != null) { CameraRig.Instance.pitch = 30f; CameraRig.Instance.distance = 50f; }
+                    }
                     if (At(12, 29f)) Shot("04e_r2");
                     if (At(13, 29.5f))
                     {
+                        if (CameraRig.Instance != null) CameraRig.Instance.ApplyModeDefaults();
                         var pier = GameObject.Find("LakePier");
                         if (pier != null)
                         {

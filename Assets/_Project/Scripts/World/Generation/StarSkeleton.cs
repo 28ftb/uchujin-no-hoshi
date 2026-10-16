@@ -61,6 +61,9 @@ namespace Uchujin.World
         public const string SeaWindWood = "t6a";
         public const string CliffPath = "t6b";
 
+        /// <summary>渓流の坂道で登る高さ（村のゲートから滝の山のゲートまで、m）。村のゲートの高さが決まってから滝の山側の高さにする。</summary>
+        public float SlopeRise;
+
         /// <summary>湖の森の湖の水面（m。§5）。</summary>
         public const float LakeSurface = 24f;
 
@@ -112,7 +115,7 @@ namespace Uchujin.World
             var t1 = s.AddRoute(FlowerPath, "花の野道", "Flower Path", new Vector2(240f, 120f), r, Village, LakeForest);
             t1.Built = true;
             s.AddRoute(MarshRiver, "川下りの湿原", "Downriver Marsh", new Vector2(260f, 130f), r, Village, BeachCape);
-            s.AddRoute(StreamSlope, "渓流の坂道", "Stream Slope", new Vector2(260f, 110f), r, Village, WaterfallMountain);
+            s.AddRoute(StreamSlope, "渓流の坂道", "Stream Slope", new Vector2(260f, 110f), r, Village, WaterfallMountain).Built = true;
             s.AddRoute(MossValley, "苔の谷", "Moss Valley", new Vector2(240f, 100f), r, LakeForest, WaterfallMountain);
             s.AddRoute(Ridge, "尾根道", "Ridge Path", new Vector2(280f, 90f), r, WaterfallMountain, Highland);
             if (s.T6 == SeaWindWood) s.AddRoute(SeaWindWood, "海風の林", "Sea Wind Wood", new Vector2(280f, 110f), r, BeachCape, LakeForest);
@@ -122,7 +125,8 @@ namespace Uchujin.World
             s.SetGateHeight(FlowerPath, LakeForest, LakeSurface - r.Range(1.6f, 2.4f));
             s.SetGateHeight(MossValley, LakeForest, r.Range(31f, 35f));
             s.SetGateHeight(MossValley, WaterfallMountain, r.Range(52f, 58f));
-            s.SetGateHeight(StreamSlope, WaterfallMountain, r.Range(50f, 55f));
+            // 渓流の坂道は村（高さ10m前後）から登る：本道を 11% で走って45秒以内に収めるため、滝の山の入口は 40〜46m（§5 の 50〜55m から下げた）
+            s.SetGateHeight(StreamSlope, WaterfallMountain, r.Range(40f, 46f));
             s.SetGateHeight(Ridge, WaterfallMountain, r.Range(88f, 95f));
             s.SetGateHeight(Ridge, Highland, r.Range(100f, 106f));
             s.SetGateHeight(MarshRiver, BeachCape, r.Range(2f, 4f));
@@ -136,6 +140,7 @@ namespace Uchujin.World
                 s.SetGateHeight(CliffPath, BeachCape, r.Range(10f, 16f));
                 s.SetGateHeight(CliffPath, WaterfallMountain, r.Range(50f, 58f));
             }
+            s.SlopeRise = r.Range(24f, 30f);
             return s;
         }
 

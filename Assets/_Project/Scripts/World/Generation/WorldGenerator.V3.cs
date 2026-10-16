@@ -161,7 +161,13 @@ namespace Uchujin.World
         private static void AttachFieldMaps(GeneratedWorld g, ulong seed)
         {
             if (g == null || g.Skeleton == null) return;
-            foreach (var vg in g.VillageGates) g.Skeleton.SetGateHeight(vg.OtherMapId, StarSkeleton.Village, vg.Position.y);
+            foreach (var vg in g.VillageGates)
+            {
+                g.Skeleton.SetGateHeight(vg.OtherMapId, StarSkeleton.Village, vg.Position.y);
+                // 渓流の坂道：滝の山の入口は村のゲートより SlopeRise だけ高く（坂 11% で45秒以内に登れる高さ）
+                if (vg.OtherMapId == StarSkeleton.StreamSlope)
+                    g.Skeleton.SetGateHeight(StarSkeleton.StreamSlope, StarSkeleton.WaterfallMountain, vg.Position.y + g.Skeleton.SlopeRise);
+            }
             foreach (var sm in g.Skeleton.Maps)
             {
                 if (!sm.Built || sm.Id == StarSkeleton.Village) continue;

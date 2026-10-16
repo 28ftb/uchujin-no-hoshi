@@ -40,6 +40,10 @@ namespace Uchujin.World
         public const float FieldRouteMaxSeconds = 45f;
         /// <summary>本道の坂の上限（4m の区間の勾配。道は 8% を目安に均し、少しの余裕をみる）。</summary>
         public const float FieldRoadMaxGrade = 0.13f;
+        /// <summary>道を均した時の坂（マップの RoadGrade）に対する、検証の余裕。</summary>
+        public const float FieldRoadGradeSlack = 0.05f;
+        /// <summary>坂道の道中（渓流の坂道・崖の小道）の本道の坂（ふつうは 8%）。村から山へ40m近く登るため少しきつくする。</summary>
+        public const float FieldSlopeRoadGrade = 0.11f;
         /// <summary>地域マップのゲートから主な場所（湖の岬など）までの上限（秒）。</summary>
         public const float FieldRegionMaxSeconds = 26f;
         /// <summary>村のゲートを置く位置（村の中心から、端の手前までの距離。見えない壁の内側）。</summary>

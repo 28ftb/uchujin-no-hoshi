@@ -100,6 +100,13 @@ namespace Uchujin.World
                         st.transform.rotation = Quaternion.Euler(0f, s.Yaw, 0f);
                         break;
                     }
+                    case FieldStructureKind.Ruin:
+                    {
+                        // 石積みの跡（苔むした四角い石）
+                        var stone = PrimitiveBuilder.Create(PrimitiveType.Cube, structures, pos + Vector3.up * 0.35f * s.Size, new Vector3(1.2f, 0.7f, 0.9f) * s.Size, Color.Lerp(m.Palette.Stone, m.Palette.GrassDark, 0.25f), "RuinStone");
+                        stone.transform.rotation = Quaternion.Euler(0f, s.Yaw, 0f);
+                        break;
+                    }
                     case FieldStructureKind.Crystal:
                     {
                         var c = PrimitiveBuilder.Create(PrimitiveType.Cylinder, structures, pos + Vector3.up * 0.9f * s.Size, new Vector3(0.5f, 0.9f, 0.5f) * s.Size, m.Palette.CrystalColor, "HiddenCrystal", false);

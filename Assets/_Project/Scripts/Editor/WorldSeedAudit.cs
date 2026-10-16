@@ -527,7 +527,16 @@ namespace Uchujin.EditorTools
                 File.WriteAllBytes(Path.Combine(OutDir, "map_" + i + ".png"), tex.EncodeToPNG());
                 UnityEngine.Object.DestroyImmediate(tex);
                 tb.Dispose();
-                foreach (var m in g.FieldMaps) WriteFieldMap(m, Path.Combine(OutDir, $"map_{i}_{m.Id}.png"));
+                foreach (var m in g.FieldMaps)
+                {
+                    WriteFieldMap(m, Path.Combine(OutDir, $"map_{i}_{m.Id}.png"));
+                    // 作り直しになった試行も見る（原因の調べ用）
+                    for (int a = 0; a < m.Attempt && a < 3; a++)
+                    {
+                        var fa = FieldMapGenerator.GenerateAttempt(seed, g.Skeleton, m.Id, g.Palette, a);
+                        if (fa != null) WriteFieldMap(fa, Path.Combine(OutDir, $"map_{i}_{m.Id}_try{a}.png"));
+                    }
+                }
                 if (g.Skeleton != null) WriteSkeleton(g.Skeleton, Path.Combine(OutDir, $"skeleton_{i}.png"));
             }
         }
@@ -563,11 +572,61 @@ namespace Uchujin.EditorTools
                     var n = m.Normal(ix, iz);
                     float shade = Mathf.Clamp(0.75f + Vector3.Dot(n, new Vector3(-0.5f, 0.75f, 0.4f).normalized) * 0.35f, 0.55f, 1.15f);
                     c = new Color(c.r * shade, c.g * shade, c.b * shade, 1f);
+                    // 2m ごとの等高線（起伏が分かるように。10m ごとは濃く）
+                    if (ix + 1 < m.NX && iz + 1 < m.NZ)
+                    {
+                        int b0 = Mathf.FloorToInt(m.H[i] / 2f);
+                        int b1 = Mathf.FloorToInt(m.H[m.Index(ix + 1, iz)] / 2f), b2 = Mathf.FloorToInt(m.H[m.Index(ix, iz + 1)] / 2f);
+                        if (b0 != b1 || b0 != b2)
+                        {
+                            bool major = Mathf.FloorToInt(m.H[i] / 10f) != Mathf.FloorToInt(m.H[m.Index(ix + 1, iz)] / 10f) || Mathf.FloorToInt(m.H[i] / 10f) != Mathf.FloorToInt(m.H[m.Index(ix, iz + 1)] / 10f);
+                            c = Color.Lerp(c, new Color(0.25f, 0.18f, 0.1f), major ? 0.55f : 0.25f);
+                        }
+                    }
                     bool outside = !m.InsidePlayable(new Vector2(m.XOf(ix), m.ZOf(iz)));
                     if (outside) c = Color.Lerp(c, Color.gray, 0.45f);
                     for (int dy = 0; dy < s; dy++)
                         for (int dx = 0; dx < s; dx++) px[(iz * s + dy) * w + ix * s + dx] = c;
                 }
+            // 最初のゲートから歩いて行けない、遊べる範囲の地面を赤く（隣との高さの差 1.7m 超・深さ0.6m 超の水は通れない）
+            if (m.Gates.Count > 0)
+            {
+                var seen = new bool[m.NX * m.NZ];
+                var start = m.ToLocal(m.Gates[0].Arrival.x, m.Gates[0].Arrival.z);
+                m.ToGrid(start.x, start.y, out int sx, out int sz);
+                var q = new Queue<int>();
+                seen[m.Index(sx, sz)] = true;
+                q.Enqueue(m.Index(sx, sz));
+                while (q.Count > 0)
+                {
+                    int i = q.Dequeue();
+                    int ix = i % m.NX, iz = i / m.NX;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        int nx = ix + (k == 0 ? 1 : k == 1 ? -1 : 0), nz = iz + (k == 2 ? 1 : k == 3 ? -1 : 0);
+                        if (nx < 0 || nz < 0 || nx >= m.NX || nz >= m.NZ) continue;
+                        int j = m.Index(nx, nz);
+                        if (seen[j] || !m.InsidePlayable(new Vector2(m.XOf(nx), m.ZOf(nz)), 0.5f)) continue;
+                        if (Mathf.Abs(m.H[j] - m.H[i]) > WorldTuning.FieldWalkMaxStep) continue;
+                        if (!float.IsNaN(m.WaterY[j]) && m.WaterY[j] - m.H[j] > WorldLayout.WadeableDepth) continue;
+                        seen[j] = true;
+                        q.Enqueue(j);
+                    }
+                }
+                for (int iz = 0; iz < m.NZ; iz++)
+                    for (int ix = 0; ix < m.NX; ix++)
+                    {
+                        int i = m.Index(ix, iz);
+                        if (seen[i] || !m.InsidePlayable(new Vector2(m.XOf(ix), m.ZOf(iz)), 0.5f)) continue;
+                        if (!float.IsNaN(m.WaterY[i]) && m.WaterY[i] > m.H[i]) continue;
+                        for (int dy = 0; dy < s; dy++)
+                            for (int dx = 0; dx < s; dx++)
+                            {
+                                int pi = (iz * s + dy) * w + ix * s + dx;
+                                px[pi] = Color.Lerp(px[pi], Color.red, 0.45f);
+                            }
+                    }
+            }
             tex.SetPixels(px);
             System.Action<Vector2, Color, int> dot = (l, c, r) =>
             {
