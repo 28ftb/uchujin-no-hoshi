@@ -222,7 +222,52 @@ namespace Uchujin.EditorTools
                             + "・今いるエリア：" + (area != null ? area.nameJa : "なし") + "・足元の水深：" + (g.Layout != null ? g.Layout.WaterDepthAt(lp + g.LocalPlayer.Avatar.forward * 4f).ToString("0.0") : "?") + "m");
                     }
                     if (At(15, 35.5f) && g.LocalPlayer.CurrentAreaId != AreaIds.Overworld) g.Areas.Transition(g.LocalPlayer, AreaIds.Overworld);
-                    if (At(16, 37f)) Stage = 4;
+                    // 村 → 渓流の坂道 → 滝の山
+                    if (At(16, 37f))
+                    {
+                        var gate = GameObject.Find("Gate_gate.r1.t3");
+                        if (gate != null) g.LocalPlayer.Position = gate.transform.position - gate.transform.forward * 9f + Vector3.up * 0.3f;
+                        else Log("村の渓流の坂道のゲートが見つからない");
+                    }
+                    if (At(17, 39f))
+                    {
+                        var gate = GameObject.Find("Gate_gate.r1.t3");
+                        if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
+                    }
+                    if (At(18, 41.5f))
+                    {
+                        Log("渓流の坂道のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                        if (CameraRig.Instance != null) { CameraRig.Instance.pitch = 30f; CameraRig.Instance.distance = 46f; }
+                    }
+                    if (At(19, 44f)) Shot("04g_t3");
+                    if (At(20, 44.5f))
+                    {
+                        var gate = GameObject.Find("Gate_gate.t3.r3");
+                        if (gate != null) g.LocalPlayer.Position = gate.transform.position + Vector3.up * 0.3f;
+                        else Log("渓流の坂道の滝の山側のゲートが見つからない");
+                    }
+                    if (At(21, 47f)) Log("渓流の坂道の先のゲートに入った後のエリア：" + g.LocalPlayer.CurrentAreaId);
+                    if (At(22, 50f)) Shot("04h_r3");
+                    if (At(23, 50.5f))
+                    {
+                        var fall = GameObject.Find("FieldWaterfall");
+                        if (fall != null)
+                        {
+                            var near = fall.transform.position + fall.transform.forward * 14f + fall.transform.right * 12f;
+                            g.LocalPlayer.Position = g.Layout.OnGround(near) + Vector3.up * 0.5f;
+                            var flat = fall.transform.position - g.LocalPlayer.Position;
+                            flat.y = 0f;
+                            if (flat.sqrMagnitude > 0.1f) g.LocalPlayer.Avatar.rotation = Quaternion.LookRotation(flat);
+                        }
+                        else Log("滝が見つからない");
+                    }
+                    if (At(24, 54f)) Shot("04i_r3_falls");
+                    if (At(25, 54.5f))
+                    {
+                        if (CameraRig.Instance != null) CameraRig.Instance.ApplyModeDefaults();
+                        if (g.LocalPlayer.CurrentAreaId != AreaIds.Overworld) g.Areas.Transition(g.LocalPlayer, AreaIds.Overworld);
+                    }
+                    if (At(26, 56f)) Stage = 4;
                     break;
                 case 4: // 住民と会話
                 {

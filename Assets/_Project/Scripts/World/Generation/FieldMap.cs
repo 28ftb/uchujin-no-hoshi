@@ -38,7 +38,7 @@ namespace Uchujin.World
         public bool Hidden;
     }
 
-    public enum FieldStructureKind { Gazebo, Pier, SteppingStone, Bench, Crystal, Signpost, Lantern, Ruin }
+    public enum FieldStructureKind { Gazebo, Pier, SteppingStone, Bench, Crystal, Signpost, Lantern, Ruin, CaveMouth, Waterfall }
 
     /// <summary>マップに置く小さな建て物（東屋・桟橋・飛び石・道標など）。座標はマップのローカル。</summary>
     public sealed class FieldStructure

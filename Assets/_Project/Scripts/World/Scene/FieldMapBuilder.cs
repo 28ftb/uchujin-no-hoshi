@@ -107,6 +107,26 @@ namespace Uchujin.World
                         stone.transform.rotation = Quaternion.Euler(0f, s.Yaw, 0f);
                         break;
                     }
+                    case FieldStructureKind.CaveMouth:
+                    {
+                        // 崖の洞穴の口（暗い穴と、まわりの岩）
+                        var rootC = StructureBuilder.Root(structures, "CaveMouth", pos, s.Yaw);
+                        StructureBuilder.Box(rootC, new Vector3(0f, 1.1f, -0.4f), new Vector3(2.4f, 2.2f, 1.2f), new Color(0.05f, 0.05f, 0.08f), false, "CaveDark");
+                        StructureBuilder.Box(rootC, new Vector3(-1.5f, 1.2f, -0.2f), new Vector3(0.8f, 2.6f, 1.4f), m.Palette.RockDark, true, "CaveRockL");
+                        StructureBuilder.Box(rootC, new Vector3(1.5f, 1.2f, -0.2f), new Vector3(0.8f, 2.6f, 1.4f), m.Palette.RockDark, true, "CaveRockR");
+                        StructureBuilder.Box(rootC, new Vector3(0f, 2.55f, -0.2f), new Vector3(3.8f, 0.7f, 1.4f), m.Palette.Rock, false, "CaveLintel");
+                        break;
+                    }
+                    case FieldStructureKind.Waterfall:
+                    {
+                        // 滝の水の幕（崖の上から滝つぼまで）
+                        var rootW = StructureBuilder.Root(structures, "FieldWaterfall", pos, s.Yaw);
+                        var curtain = PrimitiveBuilder.Create(PrimitiveType.Cube, rootW, new Vector3(0f, -s.Size * 0.5f, 1.5f), new Vector3(5.5f, Mathf.Max(1f, s.Size), 0.4f), new Color(0.78f, 0.92f, 1f), "FallCurtain", false);
+                        curtain.GetComponent<Renderer>().sharedMaterial = MaterialCache.Get(new Color(0.78f, 0.92f, 1f), 0.9f, true);
+                        var foam = PrimitiveBuilder.Create(PrimitiveType.Cylinder, rootW, new Vector3(0f, -s.Size + 0.1f, 3.5f), new Vector3(6f, 0.15f, 4f), new Color(0.92f, 0.97f, 1f), "FallFoam", false);
+                        foam.GetComponent<Renderer>().sharedMaterial = MaterialCache.Get(new Color(0.92f, 0.97f, 1f), 0.6f, true);
+                        break;
+                    }
                     case FieldStructureKind.Crystal:
                     {
                         var c = PrimitiveBuilder.Create(PrimitiveType.Cylinder, structures, pos + Vector3.up * 0.9f * s.Size, new Vector3(0.5f, 0.9f, 0.5f) * s.Size, m.Palette.CrystalColor, "HiddenCrystal", false);

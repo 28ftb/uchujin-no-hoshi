@@ -45,6 +45,7 @@ namespace Uchujin.World
             if (m.Id == StarSkeleton.FlowerPath) AreasFlowerPath(m, L);
             else if (m.Id == StarSkeleton.LakeForest) AreasLakeForest(m, L);
             else if (m.Id == StarSkeleton.StreamSlope) AreasStreamSlope(m, L);
+            else if (m.Id == StarSkeleton.WaterfallMountain) AreasWaterfallMountain(m, L);
             BuildSpots(m, L);
             BuildHabitats(m, L);
             return L;
@@ -137,6 +138,24 @@ namespace Uchujin.World
             if (ruins != null) Area(L, "area.t3.ruins", AreaType.Mountain, G(m, ruins.Local), 9f, "石積みの跡", "Old stonework");
             var shelf = m.GetPlace("t3.shelf");
             if (shelf != null) Area(L, "area.t3.shelf", AreaType.Mountain, G(m, shelf.Local), 10f, "滝の上の岩棚", "Rock shelf");
+        }
+
+        private static void AreasWaterfallMountain(FieldMap m, WorldLayout L)
+        {
+            var center = new Vector2(m.Width * 0.5f, m.Depth * 0.5f);
+            Area(L, "area.r3.mountain", AreaType.Mountain, G(m, center), new Vector2(m.Width, m.Depth).magnitude * 0.5f + 12f, "滝の山", "Waterfall mountain");
+            Area(L, "area.r3.foot", AreaType.Forest, G(m, new Vector2(m.Width * 0.5f, m.Depth * 0.12f)), m.Width * 0.42f, "山のふもとの森", "Foothill forest");
+            foreach (var st in m.Streams) StreamAreas(m, L, st, "山の川", "Mountain river");
+            foreach (var p in m.Places)
+            {
+                if (p.Id == "r3.summit") Area(L, "area.r3.summit", AreaType.Hill, G(m, p.Local), 20f, "山頂", "Summit");
+                else if (p.Id == "r3.crystal") Area(L, "area.r3.crystal", AreaType.Mountain, G(m, p.Local), 22f, "結晶の岩場", "Crystal rocks");
+                else if (p.Id == "r3.falls") Area(L, "area.r3.falls", AreaType.Riverside, G(m, p.Local), 16f, "滝つぼ", "Plunge pool");
+                else if (p.Id == "r3.canyon") Area(L, "area.r3.canyon", AreaType.Riverside, G(m, p.Local), 14f, "こだまの渓谷", "Echo canyon");
+                else if (p.Id.StartsWith("r3.cave")) Area(L, "area." + p.Id, AreaType.Mountain, G(m, p.Local), 7f, "崖の洞穴", "Cliff cave");
+            }
+            for (int p = 0; p < m.Ponds.Count; p++)
+                Area(L, "area.r3.spring" + p, AreaType.Pond, G(m, m.Ponds[p].Center), m.Ponds[p].Radius + 5f, "山の泉", "Mountain spring");
         }
 
         private static void AreasLakeForest(FieldMap m, WorldLayout L)
@@ -238,6 +257,14 @@ namespace Uchujin.World
                     {
                         s.tags.Add("meadow");
                         if (k == 1) s.tags.Add("weed");
+                    }
+                    else if (m.Id == StarSkeleton.WaterfallMountain)
+                    {
+                        // 山の泉（冷たい湧水。§8.3 R3 の湧水の淵）
+                        s.tags.Add("spring");
+                        s.tags.Add("cold");
+                        s.tags.Add("rocky");
+                        s.tags.Add("quiet");
                     }
                     else
                     {

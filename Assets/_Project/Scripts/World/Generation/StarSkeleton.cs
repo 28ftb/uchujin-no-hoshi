@@ -109,6 +109,7 @@ namespace Uchujin.World
             var lake = s.Add(LakeForest, "湖の森", "Lake Forest", SkeletonMapKind.Region, new Vector2(320f, 300f), r.Range(0, 3), Dir(s.LakeBearing) * 1f);
             lake.Built = true;
             var mtn = s.Add(WaterfallMountain, "滝の山", "Waterfall Mountain", SkeletonMapKind.Region, new Vector2(300f, 340f), r.Range(0, 3), Dir(s.MountainBearing) * 1.05f);
+            mtn.Built = true;
             var sea = s.Add(BeachCape, "浜と岬", "Beach and Cape", SkeletonMapKind.Region, new Vector2(360f, 220f), r.Range(0, 3), Dir(s.SeaBearing) * 1f);
             s.Add(Highland, "星見の高原", "Stargazing Highland", SkeletonMapKind.Region, new Vector2(240f, 240f), r.Range(0, 3), mtn.StarPos + Dir(s.HighlandBearing) * 0.9f);
 

@@ -44,6 +44,7 @@ namespace Uchujin.World
                 case StarSkeleton.FlowerPath: return new FlowerPathGen();
                 case StarSkeleton.LakeForest: return new LakeForestGen();
                 case StarSkeleton.StreamSlope: return new StreamSlopeGen();
+                case StarSkeleton.WaterfallMountain: return new WaterfallMountainGen();
                 default: return null;
             }
         }
@@ -357,8 +358,9 @@ namespace Uchujin.World
                 float need = Mathf.Abs(endH - startH) / free;
                 if (need > grade * 0.92f)
                 {
-                    grade = Mathf.Min(grade + 0.03f, need / 0.92f);
-                    if (line == M.Road) M.RoadGrade = Mathf.Max(M.RoadGrade, grade);
+                    // 急な坂は残してよい（ユーザー判断 2026-10-17）。ただし歩いて登れる 35% まで
+                    grade = Mathf.Min(need / 0.92f, Mathf.Max(grade + 0.03f, 0.35f));
+                    M.RoadGrade = Mathf.Max(M.RoadGrade, grade);
                 }
             }
             var t = RoadTargets(line, grade, startH, endH);
@@ -1095,7 +1097,7 @@ namespace Uchujin.World
             // 高さ（先に起伏のある地形を作り、道は後から通る所だけ坂にする）：
             // 骨組みの上り下り（村の側から一段上がった丘の草原）＋ 大きなうねり（丘と窪地）＋ 段丘の段（2.5〜4.5m の崖）
             // ＋ 小川の谷（まわりより低い）＋ 回り込む丘・こぶ ＋ 細かいうねり
-            float upLift = r.Range(6f, 10f);
+            float upLift = r.Range(8f, 12f);
             float valleyDepth = r.Range(2.5f, 4f);
             var big = Noise("hills");
             var roll = Noise("roll");
@@ -1107,7 +1109,7 @@ namespace Uchujin.World
                 float t = Mathf.Clamp01(l.x / W);
                 float env = Mathf.Pow(Mathf.Sin(t * Mathf.PI), 0.5f);
                 float profile = Mathf.Lerp(hA, hB - stepSign * stepTotal, GeoUtil.SmoothStep(0f, 1f, t)) + upLift * Mathf.Pow(Mathf.Sin(t * Mathf.PI), 0.6f) + ScarpsAt(l);
-                float h = profile + (big.Fbm(l.x * 0.011f, l.y * 0.011f, 3) - 0.5f) * 18f * env + (roll.Fbm(l.x * 0.03f, l.y * 0.03f, 3) - 0.5f) * 3f;
+                float h = profile + (big.Fbm(l.x * 0.011f, l.y * 0.011f, 3) - 0.5f) * 22f * env + (roll.Fbm(l.x * 0.03f, l.y * 0.03f, 3) - 0.5f) * 3f;
                 if (sDist[i] != float.MaxValue)
                 {
                     // 小川の谷：谷底はまわりより valleyDepth 低く、岸はゆるく上がる
@@ -1410,7 +1412,7 @@ namespace Uchujin.World
                 foreach (var kn in knolls) if (Vector2.Distance(kn.c, c) < 45f) far = false;
                 foreach (var rh in roundHills) if (Vector2.Distance(rh.c, c) < rh.r + 20f) far = false;
                 if (!far) continue;
-                knolls.Add((c, r.Range(14f, 22f), r.Range(4f, 8f)));
+                knolls.Add((c, r.Range(14f, 22f), r.Range(5f, 9f)));
             }
         }
 
