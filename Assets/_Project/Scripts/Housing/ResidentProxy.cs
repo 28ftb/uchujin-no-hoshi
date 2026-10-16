@@ -19,6 +19,8 @@ namespace Uchujin.Housing
         public string InvitationId;
         public AlienLineage Lineage;
         public Color MainColor = Color.white;
+        /// <summary>デザイン済み住民のID。モデルがあればプリミティブの代わりにモデルを出す。</summary>
+        public string DesignId;
 
         /// <summary>"walk" "sit" "look" "play" "eat" "sleep" "idle" "leave" "lie"</summary>
         public string Action = "idle";
@@ -39,6 +41,8 @@ namespace Uchujin.Housing
         private float gestureUntil;
         private Gesture gesture;
         private float seed;
+        private ResidentModelParts model;
+        private string modelClip;
 
         public bool Arrived => arrived;
 
@@ -52,11 +56,13 @@ namespace Uchujin.Housing
             p.ResidentId = residentId;
             p.Lineage = info != null ? info.Lineage : AlienLineage.Round;
             p.MainColor = info != null ? info.MainColor : new Color(0.7f, 0.85f, 1f);
+            p.DesignId = info != null ? info.DesignId : null;
             p.BuildBody();
             var col = go.AddComponent<CapsuleCollider>();
-            col.center = new Vector3(0, 0.6f, 0);
+            float h = p.model != null ? Mathf.Max(0.8f, p.model.Height) : 1.2f;
+            col.center = new Vector3(0, h * 0.5f, 0);
             col.radius = 0.4f;
-            col.height = 1.2f;
+            col.height = h;
             col.isTrigger = true;
             p.seed = UnityEngine.Random.Range(0f, 50f);
             return p;
@@ -69,6 +75,14 @@ namespace Uchujin.Housing
         private void BuildBody()
         {
             visual = PrimitiveBuilder.Empty("Visual", transform, Vector3.zero).transform;
+            // デザイン済み住民はモデル（屋外の姿と同じ）
+            model = ResidentModelBuilder.Build(visual, DesignId);
+            if (model != null)
+            {
+                arms.AddRange(model.ArmsLeft);
+                arms.AddRange(model.ArmsRight);
+                return;
+            }
             var v = visual;
             var c = MainColor;
             var light = Color.Lerp(c, Color.white, 0.45f);
@@ -185,6 +199,17 @@ namespace Uchujin.Housing
             }
         }
 
+        /// <summary>モデルのアクション（Idle / Signature / Sleep）を切り替える。無いアクションは待機のまま。</summary>
+        private void PlayModelClip(string clip)
+        {
+            var anim = model != null ? model.Animation : null;
+            if (anim == null || modelClip == clip) return;
+            if (anim[clip] == null) clip = "Idle";
+            if (anim[clip] == null || modelClip == clip) return;
+            anim.CrossFade(clip, 0.3f);
+            modelClip = clip;
+        }
+
         private static void Feet(Transform v, Color c)
         {
             foreach (var sx in new[] { -1f, 1f })
@@ -274,7 +299,10 @@ namespace Uchujin.Housing
             Vector3 euler = Vector3.zero;
             Vector3 scale = Vector3.one;
             bool floaty = Lineage == AlienLineage.Floating || Lineage == AlienLineage.Mixed;
-            if (floaty) pos.y += 0.12f + Mathf.Sin(t * 2f) * 0.06f;
+            // モデルの浮遊する住民は、モデル自体が浮いた位置で作られている
+            if (floaty) pos.y += (model != null ? 0f : 0.12f) + Mathf.Sin(t * 2f) * 0.06f;
+            bool sleepClip = model != null && model.Animation != null && model.Animation["Sleep"] != null;
+            PlayModelClip(Action == "sleep" || Action == "lie" ? (sleepClip ? "Sleep" : "Idle") : Action == "play" ? "Signature" : "Idle");
             switch (Action)
             {
                 case "walk":
@@ -295,7 +323,7 @@ namespace Uchujin.Housing
                 case "sleep":
                 case "lie":
                     pos.y += seatLift;
-                    euler.x = -75f;
+                    if (!sleepClip) euler.x = -75f; // 寝姿のアクションがあるモデルは寝姿で横になる
                     scale = new Vector3(1f, 1f + Mathf.Sin(t * 1.5f) * 0.03f, 1f);
                     break;
                 case "play":

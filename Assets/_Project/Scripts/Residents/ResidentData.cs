@@ -94,6 +94,8 @@ namespace Uchujin.Residents
         public string id;
         /// <summary>生成元のキー（"initial:3" "newcomer:2"）。</summary>
         public string genKey;
+        /// <summary>デザイン済み住民のID（ResidentDesigns の "0101" など）。空なら従来のプリミティブの見た目（古いセーブの新住民）。</summary>
+        public string designId;
         public AlienLineage lineage;
         public ResidentAge age = ResidentAge.Adult;
         public ResidentJob originalJob;

@@ -308,7 +308,57 @@ namespace Uchujin.Residents
                 if (Resident.State.activity == ResidentActivity.Crafting || Resident.State.activity == ResidentActivity.Working || Resident.State.activity == ResidentActivity.Mining)
                     work = Mathf.Max(0, Mathf.Sin(idleTimer * 5f)) * 60f;
                 bool carry = Resident.State.carrying || heldProp != null;
-                SetArms(carry ? -70f : armSwing, carry ? -70f : -armSwing - work, 12f, carry ? 25f : 12f, dt);
+                // モデルの腕はもともと少し開いた姿勢なので、待機時に外へ開く角度は足さない
+                float rest = Rig.IsModel ? 0f : 12f;
+                SetArms(carry ? -70f : armSwing, carry ? -70f : -armSwing - work, rest, carry ? rest + 13f : rest, dt);
+            }
+            if (Rig.IsModel) UpdateModelClips(dt, moving);
+        }
+
+        // ---- モデルのアクション（Idle / Signature / Sleep） ----
+        private string modelClip;
+        private float signatureTimer = -1f;
+        private float signatureLeft;
+
+        /// <summary>
+        /// 寝ている間は寝姿、祝う・遊ぶ時は特徴的な動き、立ち止まっている時はときどき特徴的な動きを1回、それ以外は待機。
+        /// 歩く・跳ねる・身振り・表情はこれまでの手続き的な動きが上に重なる。
+        /// </summary>
+        private void UpdateModelClips(float dt, bool moving)
+        {
+            var anim = Rig.Model != null ? Rig.Model.Animation : null;
+            if (anim == null) return;
+            if (signatureTimer < 0f) signatureTimer = Random.Range(8f, 20f);
+            var act = Resident.State.activity;
+            bool hasSig = anim["Signature"] != null;
+            string want = "Idle";
+            if (act == ResidentActivity.Sleeping && anim["Sleep"] != null) want = "Sleep";
+            else if (!moving && hasSig && (act == ResidentActivity.Celebrating || act == ResidentActivity.Playing)) want = "Signature";
+            else if (!moving && hasSig && currentGesture == null)
+            {
+                if (signatureLeft > 0f)
+                {
+                    signatureLeft -= dt;
+                    want = "Signature";
+                }
+                else
+                {
+                    signatureTimer -= dt;
+                    if (signatureTimer <= 0f)
+                    {
+                        signatureLeft = Mathf.Max(1f, anim["Signature"].length);
+                        signatureTimer = Random.Range(15f, 35f);
+                        want = "Signature";
+                    }
+                }
+            }
+            else signatureLeft = 0f;
+            if (anim[want] == null) return;
+            if (modelClip != want)
+            {
+                if (want == "Signature" && modelClip != "Signature") anim[want].time = 0f;
+                anim.CrossFade(want, 0.3f);
+                modelClip = want;
             }
         }
 
@@ -326,10 +376,12 @@ namespace Uchujin.Residents
 
         private void SetArms(float leftPitch, float rightPitch, float leftRoll, float rightRoll, float dt)
         {
+            // プリミティブの多腕は段ごとに少しずつ開く。モデルの多腕は最初から開いて作られている。
+            float spread = Rig.IsModel ? 0f : 15f;
             for (int i = 0; i < Rig.ArmsLeft.Count; i++)
-                Rig.ArmsLeft[i].localRotation = Quaternion.Slerp(Rig.ArmsLeft[i].localRotation, Quaternion.Euler(leftPitch, 0, -leftRoll - i * 15f), 10f * dt);
+                Rig.ArmsLeft[i].localRotation = Quaternion.Slerp(Rig.ArmsLeft[i].localRotation, Quaternion.Euler(leftPitch, 0, -leftRoll - i * spread), 10f * dt);
             for (int i = 0; i < Rig.ArmsRight.Count; i++)
-                Rig.ArmsRight[i].localRotation = Quaternion.Slerp(Rig.ArmsRight[i].localRotation, Quaternion.Euler(rightPitch, 0, rightRoll + i * 15f), 10f * dt);
+                Rig.ArmsRight[i].localRotation = Quaternion.Slerp(Rig.ArmsRight[i].localRotation, Quaternion.Euler(rightPitch, 0, rightRoll + i * spread), 10f * dt);
         }
 
         private void AnimateFace(float dt)
@@ -412,12 +464,23 @@ namespace Uchujin.Residents
             Rig.EyeR.localPosition = Vector3.Lerp(Rig.EyeR.localPosition, Rig.EyeRBasePos + eyeOff, sp);
             Rig.Mouth.localScale = Vector3.Lerp(Rig.Mouth.localScale, mouth, sp);
             Rig.Mouth.localPosition = Vector3.Lerp(Rig.Mouth.localPosition, Rig.MouthBasePos + mouthOff, sp);
-            if (Rig.BrowL.gameObject.activeSelf != brows)
+            if (Rig.IsModel)
+            {
+                // モデルの眉・頬はデザインの一部なのでいつも見せ、元の位置・角度からの差で動かす
+                Rig.BrowL.localPosition = Vector3.Lerp(Rig.BrowL.localPosition, Rig.BrowLBasePos + new Vector3(0, browY, 0), sp);
+                Rig.BrowR.localPosition = Vector3.Lerp(Rig.BrowR.localPosition, Rig.BrowRBasePos + new Vector3(0, browY, 0), sp);
+                Rig.BrowL.localRotation = Quaternion.Slerp(Rig.BrowL.localRotation, Quaternion.Euler(0, 0, -browAngle), sp);
+                Rig.BrowR.localRotation = Quaternion.Slerp(Rig.BrowR.localRotation, Quaternion.Euler(0, 0, browAngle), sp);
+                var cheek = Rig.CheekBaseScale * (cheeks ? 1.25f : 1f);
+                Rig.CheekL.localScale = Vector3.Lerp(Rig.CheekL.localScale, cheek, sp);
+                Rig.CheekR.localScale = Vector3.Lerp(Rig.CheekR.localScale, cheek, sp);
+            }
+            else if (Rig.BrowL.gameObject.activeSelf != brows)
             {
                 Rig.BrowL.gameObject.SetActive(brows);
                 Rig.BrowR.gameObject.SetActive(brows);
             }
-            if (brows)
+            if (brows && !Rig.IsModel)
             {
                 var bl = Rig.BrowL.localPosition;
                 Rig.BrowL.localPosition = new Vector3(bl.x, Rig.EyeLBasePos.y + Rig.EyeBaseScale.y * 0.9f + browY, bl.z);
@@ -425,7 +488,7 @@ namespace Uchujin.Residents
                 Rig.BrowL.localEulerAngles = new Vector3(0, 0, -browAngle);
                 Rig.BrowR.localEulerAngles = new Vector3(0, 0, browAngle);
             }
-            if (Rig.CheekL.gameObject.activeSelf != cheeks)
+            if (!Rig.IsModel && Rig.CheekL.gameObject.activeSelf != cheeks)
             {
                 Rig.CheekL.gameObject.SetActive(cheeks);
                 Rig.CheekR.gameObject.SetActive(cheeks);

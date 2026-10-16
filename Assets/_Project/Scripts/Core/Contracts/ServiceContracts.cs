@@ -246,6 +246,8 @@ namespace Uchujin.Core
         bool Knows(string playerId);
         /// <summary>見た目の主な色（UIの顔アイコン等）。</summary>
         Color MainColor { get; }
+        /// <summary>デザイン済み住民のID（モデル Resources/Residents/&lt;ID&gt;）。空ならプリミティブの見た目。</summary>
+        string DesignId { get; }
     }
 
     [Serializable]

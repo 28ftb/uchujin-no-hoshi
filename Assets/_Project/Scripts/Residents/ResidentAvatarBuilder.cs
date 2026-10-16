@@ -32,6 +32,12 @@ namespace Uchujin.Residents
         public bool HasArms;
         public bool Bouncy;           // 跳ねて移動（まんまる・もちもち）
         public bool Floats;
+
+        // ---- デザイン済みモデル（Resources/Residents）のとき ----
+        /// <summary>モデルで組み立てた（顔の部品は軸のスケール1が元の大きさ、眉・頬はいつも見えている）。</summary>
+        public bool IsModel;
+        public ResidentModelParts Model;
+        public Vector3 BrowLBasePos, BrowRBasePos, BrowBaseScale, CheekBaseScale;
     }
 
     /// <summary>
@@ -45,6 +51,8 @@ namespace Uchujin.Residents
 
         public static ResidentRig Build(Transform root, ResidentProfile profile, ResidentJob job)
         {
+            var model = BuildFromModel(root, profile);
+            if (model != null) return model;
             var a = profile.appearance;
             var rig = new ResidentRig { Root = root };
             float s = Mathf.Clamp(a.size, 0.5f, 1.4f);
@@ -187,6 +195,56 @@ namespace Uchujin.Residents
                 rig.HandRight = PrimitiveBuilder.Empty("HoldPoint", rig.Visual, new Vector3(0, rig.Height * 0.45f, 0.42f * s)).transform;
             rig.BaseVisualY = rig.Visual.localPosition.y;
             if (rig.Floats && a.lineage != AlienLineage.Mixed) rig.BaseVisualY = 0f;
+            return rig;
+        }
+
+        /// <summary>
+        /// デザイン済み住民のモデルで組み立てる（ResidentModelBuilder）。デザインやモデルが無ければ null（プリミティブで作る）。
+        /// 体の上下・傾き・伸び縮みは Visual / BodyPivot、頭・腕・脚・耳・しっぽ・顔はモデルの骨の上の軸を、これまでと同じ手続きで動かす。
+        /// </summary>
+        private static ResidentRig BuildFromModel(Transform root, ResidentProfile profile)
+        {
+            var design = ResidentDesigns.Get(profile.designId);
+            if (design == null) return null;
+            var rig = new ResidentRig { Root = root, IsModel = true };
+            rig.Visual = PrimitiveBuilder.Empty("Visual", root, Vector3.zero).transform;
+            rig.Body = PrimitiveBuilder.Empty("BodyPivot", rig.Visual, Vector3.zero).transform;
+            var m = ResidentModelBuilder.Build(rig.Body, design.Id);
+            if (m == null)
+            {
+                Object.Destroy(rig.Visual.gameObject);
+                return null;
+            }
+            rig.Model = m;
+            rig.HeadIsBody = m.Head == null;
+            rig.Head = m.Head != null ? m.Head : rig.Body;
+            rig.Face = rig.Head;
+            rig.EyeL = m.EyeL; rig.EyeR = m.EyeR; rig.Mouth = m.Mouth;
+            rig.BrowL = m.BrowL; rig.BrowR = m.BrowR; rig.CheekL = m.CheekL; rig.CheekR = m.CheekR;
+            rig.EyeBaseScale = m.EyeL.localScale;
+            rig.EyeLBasePos = m.EyeL.localPosition;
+            rig.EyeRBasePos = m.EyeR.localPosition;
+            rig.MouthBaseScale = m.Mouth.localScale;
+            rig.MouthBasePos = m.Mouth.localPosition;
+            rig.BrowLBasePos = m.BrowL.localPosition;
+            rig.BrowRBasePos = m.BrowR.localPosition;
+            rig.BrowBaseScale = m.BrowL.localScale;
+            rig.CheekBaseScale = m.CheekL.localScale;
+            rig.ArmsLeft.AddRange(m.ArmsLeft);
+            rig.ArmsRight.AddRange(m.ArmsRight);
+            rig.Legs.AddRange(m.Legs);
+            rig.Ears.AddRange(m.Ears);
+            rig.Tail = m.Tail;
+            rig.HasArms = rig.ArmsLeft.Count + rig.ArmsRight.Count > 0;
+            rig.Height = m.Height;
+            rig.Floats = design.Floats;
+            rig.Bouncy = !design.Floats && (design.Lineage == AlienLineage.Round || design.Lineage == AlienLineage.Mochi);
+            rig.OverHead = PrimitiveBuilder.Empty("OverHead", rig.Visual, new Vector3(0, rig.Height + 0.35f, 0)).transform;
+            rig.PropHolder = PrimitiveBuilder.Empty("Props", rig.Visual, Vector3.zero).transform;
+            rig.HandRight = m.HandRight != null
+                ? m.HandRight
+                : PrimitiveBuilder.Empty("HoldPoint", rig.Visual, new Vector3(0, rig.Height * 0.45f, 0.3f)).transform;
+            rig.BaseVisualY = 0f;
             return rig;
         }
 

@@ -67,6 +67,7 @@ namespace Uchujin.Residents
         public string HomeFacilityId => State.homeFacilityId;
         public int MovedInDay => State.movedInDay;
         public Color MainColor => Profile.appearance.bodyColor;
+        public string DesignId => Profile.designId;
 
         public bool IsGuide { get; internal set; }
         public bool IsVisitingFormer => !State.active && State.visitDay >= 0 && Game.Instance != null && Game.Instance.Time != null && Game.Instance.Time.Day == State.visitDay;

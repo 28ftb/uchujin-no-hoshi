@@ -72,42 +72,27 @@ namespace Uchujin.Residents
                 list.Add(new ResidentProfile { id = MakeId(seed, key), genKey = key, originalJob = jobs[i] });
             }
 
-            // ---- 系統（全10系統を幅広く。Round は案内役より Id が後ろの住民にだけ追加で割り当てる） ----
+            // ---- デザイン（100人の中から職業に合う住民を選ぶ。系統はデザインで決まる） ----
+            // 案内役は「まんまる」で道案内の住民、修理屋は「多腕」の住民（メインストーリー第1・3章）。
+            // 案内役以外の Round は、案内役より Id が後ろの住民にだけ割り当てる（案内役の判定：Round の初期住民のうち Id 順で最初の1人）。
             var guide = list[0];
-            guide.lineage = AlienLineage.Round;
-            var bag = new List<AlienLineage>
-            {
-                AlienLineage.Mochi, AlienLineage.Plush, AlienLineage.ChibiAnimal, AlienLineage.Floating,
-                AlienLineage.StarChild, AlienLineage.Lifestyle, AlienLineage.Expressive, AlienLineage.Mixed
-            };
-            var all = (AlienLineage[])Enum.GetValues(typeof(AlienLineage));
-            while (bag.Count < count + 4) bag.Add(all[rng.Range(0, all.Length)]);
-            rng.Shuffle(bag);
-            int bagIndex = 0;
+            var drng = SeededRandom.For(seed, "residents.designs");
+            var used = new HashSet<string>();
+            var lineageCount = new Dictionary<AlienLineage, int>();
+            foreach (AlienLineage l in Enum.GetValues(typeof(AlienLineage))) lineageCount[l] = 0;
             foreach (var p in list)
             {
-                if (p == guide) continue;
-                if (p.originalJob == ResidentJob.Mechanic)
+                ResidentDesign d;
+                if (p == guide) d = PickDesign(drng, p.originalJob, used, lineageCount, x => x.Lineage == AlienLineage.Round);
+                else if (p.originalJob == ResidentJob.Mechanic) d = PickDesign(drng, p.originalJob, used, lineageCount, x => x.Lineage == AlienLineage.MultiArm);
+                else
                 {
-                    p.lineage = AlienLineage.MultiArm; // 主人公の宇宙船を調べる四本腕の修理屋
-                    continue;
+                    var self = p;
+                    d = PickDesign(drng, p.originalJob, used, lineageCount,
+                        x => x.Lineage != AlienLineage.Round || string.CompareOrdinal(self.id, guide.id) > 0);
                 }
-                AlienLineage pick = AlienLineage.Expressive;
-                for (int tries = 0; tries < bag.Count; tries++)
-                {
-                    var c = bag[(bagIndex + tries) % bag.Count];
-                    if (c == AlienLineage.Round && string.CompareOrdinal(p.id, guide.id) < 0) continue;
-                    pick = c;
-                    bag.RemoveAt((bagIndex + tries) % bag.Count);
-                    break;
-                }
-                p.lineage = pick;
-            }
-            // 案内役以外にも Round がいると「まんまる」の多様さが出る（Id が案内役より後ろの住民だけ）
-            foreach (var p in list)
-            {
-                if (p == guide || p.originalJob == ResidentJob.Mechanic) continue;
-                if (p.lineage == AlienLineage.Round && string.CompareOrdinal(p.id, guide.id) < 0) p.lineage = AlienLineage.Expressive;
+                AssignDesign(p, d, used, lineageCount);
+                if (d == null) p.lineage = p == guide ? AlienLineage.Round : p.originalJob == ResidentJob.Mechanic ? AlienLineage.MultiArm : AlienLineage.Expressive;
             }
 
             // ---- 個性 ----
@@ -166,16 +151,59 @@ namespace Uchujin.Residents
                 p.originalJob = pool[rng.Range(0, pool.Count)];
             }
 
-            // 系統：少ない系統ほど来やすい（顔ぶれの変化を大きく）
+            // デザイン：この星にまだ来ていない住民から、職業に合う住民を選ぶ。少ない系統ほど来やすい（顔ぶれの変化を大きく）。
+            // 引っ越して行った住民も選ばない（手紙や再訪で同じ顔が2人になるのを避ける）。
             var counts = new Dictionary<AlienLineage, int>();
             foreach (AlienLineage l in Enum.GetValues(typeof(AlienLineage))) counts[l] = 0;
-            foreach (var r in current) if (r.State.active) counts[r.Profile.lineage]++;
-            var lineages = new List<AlienLineage>(counts.Keys);
-            p.lineage = rng.WeightedPick(lineages, l => 1f / (1f + counts[l] * 1.5f));
-            if (p.originalJob == ResidentJob.Mechanic && rng.Chance(0.6f)) p.lineage = AlienLineage.MultiArm;
+            var used = new HashSet<string>();
+            foreach (var r in current)
+            {
+                if (!string.IsNullOrEmpty(r.Profile.designId)) used.Add(r.Profile.designId);
+                if (r.State.active) counts[r.Profile.lineage]++;
+            }
+            var d = PickDesign(SeededRandom.For(seed, "residents.design." + key), p.originalJob, used, counts, null);
+            AssignDesign(p, d, used, counts);
+            if (d == null)
+            {
+                // 100人全員がこの星に来た後：従来の生成（プリミティブの見た目）
+                var lineages = new List<AlienLineage>(counts.Keys);
+                p.lineage = rng.WeightedPick(lineages, l => 1f / (1f + counts[l] * 1.5f));
+                if (p.originalJob == ResidentJob.Mechanic && rng.Chance(0.6f)) p.lineage = AlienLineage.MultiArm;
+            }
 
             FillProfile(p, rng, false);
             return p;
+        }
+
+        /// <summary>
+        /// 職業に合うデザインを選ぶ。第一の職業が合う住民 → 代わりの職業が合う住民 → だれでも、の順に探し、
+        /// 同じ段の中では村に少ない系統ほど選ばれやすくする。見つからなければ null。
+        /// </summary>
+        private static ResidentDesign PickDesign(SeededRandom r, ResidentJob job, HashSet<string> used,
+            Dictionary<AlienLineage, int> lineageCount, Func<ResidentDesign, bool> allow)
+        {
+            for (int tier = 0; tier < 3; tier++)
+            {
+                var candidates = new List<ResidentDesign>();
+                foreach (var d in ResidentDesigns.All)
+                {
+                    if (used.Contains(d.Id) || (allow != null && !allow(d))) continue;
+                    bool ok = tier == 0 ? d.Job == job : tier == 1 ? d.CanDo(job) : true;
+                    if (ok) candidates.Add(d);
+                }
+                if (candidates.Count > 0)
+                    return r.WeightedPick(candidates, d => 1f / (1f + lineageCount[d.Lineage] * 1.5f));
+            }
+            return null;
+        }
+
+        private static void AssignDesign(ResidentProfile p, ResidentDesign d, HashSet<string> used, Dictionary<AlienLineage, int> lineageCount)
+        {
+            if (d == null) return;
+            p.designId = d.Id;
+            p.lineage = d.Lineage;
+            used.Add(d.Id);
+            lineageCount[d.Lineage]++;
         }
 
         // ------------------------------------------------------------
@@ -278,6 +306,17 @@ namespace Uchujin.Residents
 
             // ---- 外見 ----
             p.appearance = MakeAppearance(p.lineage, p.age, job, r);
+            var design = ResidentDesigns.Get(p.designId);
+            if (design != null)
+            {
+                // 見た目はモデルで決まる。色は吹き出し・顔アイコン・引っ越しの箱などに使う。
+                var a = p.appearance;
+                a.bodyColor = design.MainColor;
+                a.accentColor = design.AccentColor;
+                // size 1 ≒ 以前のプリミティブの住民（約1.2 m）。当たり判定・仕事道具の大きさに使う
+                a.size = Mathf.Clamp(design.Height * Uchujin.Core.Visual.ResidentModelBuilder.GameScale / 1.2f, 0.5f, 1.4f);
+                a.floatHeight = 0f; // 浮遊する住民はモデル自体が浮いた位置で作られている
+            }
         }
 
         private static ResidentHobby PickHobby(ResidentJob job, SeededRandom r)
