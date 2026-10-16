@@ -148,11 +148,19 @@ namespace Uchujin.EditorTools
                     if (At(0, 3f)) Shot("04_village");
                     if (At(1, 4f))
                     {
+                        // 住民の家（入居済みの区画）の前。家のモデル（Resources/Art/Houses）の見た目の確認用
+                        var home = g.Layout?.GetFacilities(Uchujin.World.FacilityType.ResidentHouse).FirstOrDefault(f => !string.IsNullOrEmpty(f.ownerResidentId));
+                        if (home != null) g.LocalPlayer.Position = home.entrance + Quaternion.Euler(0f, home.rotationY, 0f) * new Vector3(1.5f, 0.5f, 3f);
+                        else Log("入居済みの家が見つからない");
+                    }
+                    if (At(2, 7f)) Shot("04b_house");
+                    if (At(3, 8f))
+                    {
                         var rocket = g.Service<IRocketService>();
                         if (rocket != null) g.LocalPlayer.Position = rocket.RocketPosition + new Vector3(6f, 0.5f, 6f);
                     }
-                    if (At(2, 7f)) Shot("05_rocket");
-                    if (At(3, 8f)) Stage = 4;
+                    if (At(4, 11f)) Shot("05_rocket");
+                    if (At(5, 12f)) Stage = 4;
                     break;
                 case 4: // 住民と会話
                 {

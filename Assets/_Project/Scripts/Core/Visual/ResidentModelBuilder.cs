@@ -258,8 +258,8 @@ namespace Uchujin.Core.Visual
             return b;
         }
 
-        /// <summary>取り込んだ材質の色（不透明度・発光を含む）から MaterialCache の材質を作って差し替える。</summary>
-        private static void ReplaceMaterials(GameObject model)
+        /// <summary>取り込んだ材質の色（不透明度・発光を含む）から MaterialCache の材質を作って差し替える（ArtModels でも使う）。</summary>
+        internal static void ReplaceMaterials(GameObject model)
         {
             var map = new Dictionary<Material, Material>();
             foreach (var r in model.GetComponentsInChildren<Renderer>(true))

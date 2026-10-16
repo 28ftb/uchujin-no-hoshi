@@ -511,9 +511,29 @@ namespace Uchujin.World
             Cyl(root, new Vector3(0.3f, 1.3f, 0f), new Vector3(0.35f, 0.18f, 0.35f), Wood, false, "Bucket");
         }
 
+        // ---------------- 村の小物のモデル（Resources/Art/Village。無ければ従来のプリミティブ） ----------------
+
+        /// <summary>【仮数値】村の小物のモデルの倍率。住民のモデルと同じく 1.5 倍（モデルは住民の身長 0.45〜1.05 m に合わせて作られている）。</summary>
+        public const float VillageModelScale = ResidentModelBuilder.GameScale;
+
+        private static GameObject VillageModel(Transform root, string name, float scale = VillageModelScale)
+            => ArtModels.Build(root, "Village/" + name, scale);
+
+        /// <summary>root の下のプリミティブの見た目を消す（当たり判定・ラベル・点灯の仕組みは残す）。</summary>
+        private static void HideRenderers(Transform root, GameObject keep)
+        {
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+                if (keep == null || !r.transform.IsChildOf(keep.transform)) r.enabled = false;
+        }
+
         private static void Bench(FacilityInfo f, Transform parent, WorldPalette P)
         {
             var root = Root(parent, "Bench", f.position, f.rotationY);
+            if (VillageModel(root, "bench") != null)
+            {
+                PrimitiveBuilder.AddBoxCollider(PrimitiveBuilder.Empty("Seat", root, Vector3.zero), new Vector3(0f, 0.3f, 0f), new Vector3(2f, 0.6f, 0.8f));
+                return;
+            }
             Box(root, new Vector3(0f, 0.45f, 0f), new Vector3(1.8f, 0.1f, 0.5f), Wood, true, "Seat");
             Box(root, new Vector3(0f, 0.8f, -0.22f), new Vector3(1.8f, 0.45f, 0.08f), Wood, false, "Back", new Vector3(-10f, 0f, 0f));
             for (int i = 0; i < 2; i++) Box(root, new Vector3((i == 0 ? -1 : 1) * 0.75f, 0.22f, 0f), new Vector3(0.1f, 0.45f, 0.45f), DarkMetal, false, "Leg");
@@ -522,6 +542,15 @@ namespace Uchujin.World
         private static void Streetlight(FacilityInfo f, Transform parent, WorldPalette P)
         {
             var root = Root(parent, "Streetlight", f.position, f.rotationY);
+            var lamp = VillageModel(root, "lamp");
+            if (lamp != null)
+            {
+                // 茎の先の光るつぼみ（高さ約 2.4 m）のあたりに明かりを置き、夜は光る部品を灯す
+                PrimitiveBuilder.AddBoxCollider(PrimitiveBuilder.Empty("Pole", root, Vector3.zero), new Vector3(0f, 1.4f, 0f), new Vector3(0.35f, 2.8f, 0.35f));
+                var lampLight = AddPointLight(root, new Vector3(0f, 2.3f, 0f), LampOn, 11f, 1.3f);
+                NightLight.Attach(root.gameObject, lampLight, LampOn, new Color(0.95f, 0.9f, 0.7f), ArtModels.GlowRenderers(lamp));
+                return;
+            }
             Cyl(root, new Vector3(0f, 0.1f, 0f), new Vector3(0.4f, 0.1f, 0.4f), DarkMetal, false, "Foot");
             Cyl(root, new Vector3(0f, 1.6f, 0f), new Vector3(0.14f, 1.6f, 0.14f), DarkMetal, true, "Pole");
             Box(root, new Vector3(0f, 3.25f, 0f), new Vector3(0.55f, 0.08f, 0.55f), DarkMetal, false, "Cap");
@@ -537,6 +566,16 @@ namespace Uchujin.World
         public static void PlazaLandmark(Vector3 pos, Transform parent, WorldPalette P)
         {
             var root = Root(parent, "PlazaLandmark", pos, 0f);
+            // 丸い舞台。広場の予約の円（半径 3 m）に収まるよう、直径 4 m（従来の大木の植え込み 3.6 m より少し大きい）にする
+            var stage = ArtModels.BuildFitted(root, "Village/plaza", new Vector3(PlazaModelDiameter, 0f, PlazaModelDiameter), VillageModelScale);
+            if (stage != null)
+            {
+                // 当たり判定は中央のつぼみだけ（舞台には上がれる）
+                PrimitiveBuilder.AddBoxCollider(PrimitiveBuilder.Empty("Trunk", root, Vector3.zero), new Vector3(0f, 1.2f, 0f), new Vector3(1f, 2.4f, 1f));
+                var orbLight = AddPointLight(root, new Vector3(0f, 2.4f, 0f), new Color(1f, 0.85f, 0.6f), 14f, 0.9f);
+                NightLight.Attach(root.gameObject, orbLight, new Color(1f, 0.85f, 0.55f), new Color(1f, 0.92f, 0.7f));
+                return;
+            }
             Cyl(root, new Vector3(0f, 0.15f, 0f), new Vector3(3.6f, 0.15f, 3.6f), Color.Lerp(P.Stone, Color.white, 0.2f), false, "Planter");
             Cyl(root, new Vector3(0f, 0f, 0f), new Vector3(1.1f, 3.2f, 1.1f), P.Trunk, true, "Trunk");
             Cyl(root, new Vector3(0.3f, 2.8f, 0f), new Vector3(0.6f, 1.8f, 0.6f), P.Trunk, false, "Branch", new Vector3(0f, 0f, -25f));
@@ -577,7 +616,28 @@ namespace Uchujin.World
             }
             // 橋脚
             Box(root, new Vector3(0f, -1.4f, 0f), new Vector3(w * 0.8f, 2.4f, 0.5f), P.Stone, false, "Pier");
+
+            // さやえんどう形の橋のモデル（長さ 3.76 m・幅 1.24 m・アーチの高さ 0.68 m、長い向きがモデルの X）を
+            // 川幅と道幅に合わせて伸ばす。歩く面はこれまでどおり平らな Deck の当たり判定（見た目だけ差し替える）。
+            var holder = new GameObject("BridgeModel").transform;
+            holder.SetParent(root, false);
+            holder.localPosition = new Vector3(0f, -BridgeArchSink, 0f);
+            holder.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            var pod = ArtModels.Build(holder, "Village/bridge");
+            if (pod == null)
+            {
+                UnityEngine.Object.Destroy(holder.gameObject);
+                return;
+            }
+            pod.transform.localScale = new Vector3(len / BridgeModelLength, 1f, w / BridgeModelWidth);
+            HideRenderers(root, pod);
         }
+
+        private const float BridgeModelLength = 3.76f, BridgeModelWidth = 1.24f;
+        /// <summary>【仮数値】広場の目印（丸い舞台）のモデルの直径の上限。</summary>
+        private const float PlazaModelDiameter = 4f;
+        /// <summary>【仮数値】橋のモデルを沈める深さ。アーチの真ん中の歩く面が Deck（y=0）とほぼ同じ高さになる。</summary>
+        private const float BridgeArchSink = 0.35f;
 
         public static void Pier(Vector3 start, Vector3 end, Transform parent, WorldPalette P, float extraLength = 0f)
         {
@@ -635,6 +695,22 @@ namespace Uchujin.World
         public static SignBoard Sign(SignInfo s, Transform parent, Func<string, string> placeWord)
         {
             var root = Root(parent, "Sign_" + s.FacilityId, s.Position, s.Yaw);
+            var signModel = VillageModel(root, "sign");
+            var panel = signModel != null ? ArtModels.FindPart(signModel, "Sign_Panel") : null;
+            if (panel != null)
+            {
+                // 雲形の板の無地の面（Sign_Panel）を看板にする。調べる当たり判定と宇宙語のラベルはその面に付ける
+                var pb = ArtModels.LocalBounds(panel.gameObject, root);
+                var face = PrimitiveBuilder.Empty("Board", root, pb.center);
+                PrimitiveBuilder.AddBoxCollider(face, Vector3.zero, new Vector3(pb.size.x, pb.size.y, Mathf.Max(0.12f, pb.size.z)));
+                var msb = face.AddComponent<SignBoard>();
+                msb.signId = s.Id;
+                msb.facilityId = s.FacilityId;
+                string mfid = s.FacilityId;
+                WorldLabels.Add(face.transform, () => placeWord(mfid), new Vector3(0f, pb.size.y * 0.5f + 0.35f, 0f), UIStyles.AlienText, 24f, true);
+                return msb;
+            }
+            if (signModel != null) UnityEngine.Object.Destroy(signModel);
             Cyl(root, new Vector3(0f, 0.8f, 0f), new Vector3(0.14f, 0.8f, 0.14f), DarkWood, false, "Post");
             var board = Box(root, new Vector3(0f, 1.75f, 0f), new Vector3(1.4f, 0.7f, 0.1f), new Color(0.93f, 0.86f, 0.7f), true, "Board");
             Box(root, new Vector3(0f, 1.75f, 0.06f), new Vector3(1.2f, 0.12f, 0.02f), DarkWood, false, "Stroke");
@@ -650,7 +726,9 @@ namespace Uchujin.World
         public static SignBoard Signpost(SignInfo s, Transform parent, Func<string, string> placeWord)
         {
             var root = Root(parent, "Signpost", s.Position, 0f);
-            var post = Cyl(root, new Vector3(0f, 1.4f, 0f), new Vector3(0.18f, 1.4f, 0.18f), DarkWood, true, "Post");
+            bool arrowModels = ArtModels.Exists("Village/sign_arrow");
+            // 矢印板のモデルがある時は、看板のモデルと同じやわらかいミントの支柱にする
+            var post = Cyl(root, new Vector3(0f, 1.4f, 0f), new Vector3(0.18f, 1.4f, 0.18f), arrowModels ? new Color(0.62f, 0.86f, 0.78f) : DarkWood, true, "Post");
             for (int i = 0; i < s.Destinations.Count; i++)
             {
                 float yaw = s.DestinationYaws[i];
@@ -658,8 +736,19 @@ namespace Uchujin.World
                 arm.transform.SetParent(root, false);
                 arm.transform.localPosition = new Vector3(0f, 2.4f - i * 0.5f, 0f);
                 arm.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
-                Box(arm.transform, new Vector3(0f, 0f, 0.75f), new Vector3(0.08f, 0.36f, 1.3f), new Color(0.93f, 0.86f, 0.7f), false, "Plank");
-                Box(arm.transform, new Vector3(0f, 0f, 1.45f), new Vector3(0.08f, 0.26f, 0.26f), new Color(0.93f, 0.86f, 0.7f), false, "Tip", new Vector3(45f, 0f, 0f));
+                var arrow = arrowModels ? ArtModels.Build(arm.transform, "Village/sign_arrow") : null;
+                if (arrow != null)
+                {
+                    // 矢印板のモデルはモデルの +X を指す（長さ 0.39 m）。+Z へ向け、矢印の長さ約 1.4 m に伸ばす
+                    arrow.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
+                    arrow.transform.localScale = new Vector3(3.6f, 2.2f, 2.2f);
+                    arrow.transform.localPosition = new Vector3(0f, 0f, 0.12f);
+                }
+                else
+                {
+                    Box(arm.transform, new Vector3(0f, 0f, 0.75f), new Vector3(0.08f, 0.36f, 1.3f), new Color(0.93f, 0.86f, 0.7f), false, "Plank");
+                    Box(arm.transform, new Vector3(0f, 0f, 1.45f), new Vector3(0.08f, 0.26f, 0.26f), new Color(0.93f, 0.86f, 0.7f), false, "Tip", new Vector3(45f, 0f, 0f));
+                }
                 var tip = new GameObject("LabelAnchor");
                 tip.transform.SetParent(arm.transform, false);
                 tip.transform.localPosition = new Vector3(0f, 0.1f, 1.1f);

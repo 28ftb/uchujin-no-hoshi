@@ -156,6 +156,8 @@ namespace Uchujin.World
                         float y = layout.HeightAt(wp) - site.Position.y;
                         var bed = StructureBuilder.Root(root, "Bed", wp + Vector3.up * 0f, a);
                         bed.position = new Vector3(wp.x, site.Position.y + y, wp.z);
+                        // 花びらの縁の丸い花壇のモデル（直径約 2.5 m）。無ければ従来の箱の花壇
+                        if (Uchujin.Core.Visual.ArtModels.Build(bed, "Village/flowerbed", StructureBuilder.VillageModelScale) != null) continue;
                         StructureBuilder.Box(bed, new Vector3(0f, 0.2f, 0f), new Vector3(2f, 0.4f, 0.9f), P.Stone, false, "Edge");
                         StructureBuilder.Box(bed, new Vector3(0f, 0.36f, 0f), new Vector3(1.8f, 0.1f, 0.7f), P.Soil, false, "Soil");
                         for (int k = 0; k < 5; k++)

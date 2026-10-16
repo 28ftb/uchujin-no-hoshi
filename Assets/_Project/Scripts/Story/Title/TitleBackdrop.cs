@@ -85,8 +85,8 @@ namespace Uchujin.Story
             // 月
             PrimitiveBuilder.Part(t, PrimitiveType.Sphere, new Vector3(-55f, 28f, 120f), Vector3.one * 12f, new Color(0.95f, 0.92f, 0.8f), "Moon");
 
-            // 小さなロケット（旅の途中）
-            var rp = RocketProxy.Build(t, Origin + new Vector3(-20f, 4f, 10f), 0f);
+            // 小さなロケット（旅の途中。不時着する前なので修理前の姿）
+            var rp = RocketProxy.Build(t, Origin + new Vector3(-20f, 4f, 10f), 0f, repaired: false);
             rp.transform.localScale = Vector3.one * 0.6f;
             rp.transform.rotation = Quaternion.Euler(0, 0, -70f);
             rp.Ignite(0.4f);

@@ -93,7 +93,15 @@ namespace Uchujin.Tablet
             if (Game?.Planet != null && string.IsNullOrEmpty(Know.worldId)) Know.worldId = Game.Planet.worldId;
             Subscribe();
             UIManager.RegisterOverlay(overlay);
+            if (heldView == null)
+            {
+                heldView = new GameObject("TabletHeldView").AddComponent<TabletHeldView>();
+                heldView.system = this;
+            }
         }
+
+        /// <summary>開いている間、主人公が手に持つ3Dのタブレット（見た目だけ）。</summary>
+        private TabletHeldView heldView;
 
         public override void Tick(float deltaTime)
         {
@@ -130,6 +138,8 @@ namespace Uchujin.Tablet
         public override void Teardown()
         {
             Unsubscribe();
+            if (heldView != null) UnityEngine.Object.Destroy(heldView.gameObject);
+            heldView = null;
             PhotoCamera?.Cancel(false);
             if (window != null && window.IsOpen) UIManager.Close(window);
             window = null;

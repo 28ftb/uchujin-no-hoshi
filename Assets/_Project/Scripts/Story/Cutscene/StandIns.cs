@@ -15,8 +15,17 @@ namespace Uchujin.Story
         public Transform hatch;
         public FlameEmitter flame;
         public Light glow;
+        /// <summary>モデルのエンジンの光（噴射の輪・胞子）。点火した時だけ見せる。</summary>
+        public readonly List<GameObject> exhaustParts = new List<GameObject>();
 
-        public static RocketProxy Build(Transform parent, Vector3 position, float yaw)
+        /// <summary>【仮数値】ロケットのモデルの大きさの上限（プリミティブの代役：高さ約 7.8 m・ひれまでの幅約 3.6 m）。</summary>
+        private const float ModelMaxHeight = 7.8f, ModelMaxWidth = 3.6f;
+
+        /// <summary>
+        /// repaired：修理後（村の技術でパワーアップした姿）のモデルを使う。タイトル画面は修理前、エンディングは修理後。
+        /// モデル（Resources/Art/Rocket）が無ければプリミティブの代役。
+        /// </summary>
+        public static RocketProxy Build(Transform parent, Vector3 position, float yaw, bool repaired = true)
         {
             var root = PrimitiveBuilder.Empty("RocketProxy", parent, Vector3.zero);
             root.transform.position = position;
@@ -57,7 +66,31 @@ namespace Uchujin.Story
             proxy.hatch = hinge.transform;
             proxy.flame = flame;
             proxy.glow = light;
+            proxy.UseModel(repaired ? "Rocket/rocket_after" : "Rocket/rocket_before");
             return proxy;
+        }
+
+        /// <summary>
+        /// Blender で作ったロケットのモデルに見た目を差し替える（ハッチの蝶番・炎・明かりの仕組みはそのまま）。
+        /// 代役の大きさに収まるよう一様に拡大・縮小する。
+        /// </summary>
+        private void UseModel(string path)
+        {
+            var model = ArtModels.Build(transform, path);
+            if (model == null) return;
+            var b = ArtModels.LocalBounds(model, transform);
+            float k = Mathf.Min(ModelMaxHeight / Mathf.Max(0.5f, b.max.y), ModelMaxWidth / Mathf.Max(0.5f, Mathf.Max(b.size.x, b.size.z)));
+            model.transform.localScale *= k;
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+                if (!r.transform.IsChildOf(model.transform)) r.enabled = false;
+            foreach (var t in model.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name.StartsWith("Engine_Plume") || t.name.StartsWith("Engine_Halo") || t.name.StartsWith("Engine_Spores"))
+                {
+                    exhaustParts.Add(t.gameObject);
+                    t.gameObject.SetActive(false);
+                }
+            }
         }
 
         public IEnumerator CloseHatch(float seconds = 1.2f)
@@ -83,6 +116,7 @@ namespace Uchujin.Story
                 flame.power = power;
             }
             if (glow != null) glow.intensity = power * 4f;
+            foreach (var p in exhaustParts) if (p != null && p.activeSelf != power > 0f) p.SetActive(power > 0f);
         }
     }
 

@@ -2,11 +2,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using Uchujin.Core;
 using Uchujin.Core.UI;
+using Uchujin.Core.Visual;
 
 namespace Uchujin.World
 {
     /// <summary>
     /// 住民の家の外観（村仕様 §5.1：家の外観・大きさ・庭に住民の個性を反映。同じ系統でも同じ家とは限らない）。
+    /// デザイン済みの住民は、系統ごとの形をその住民の配色で塗った家のモデルを使う（ユーザーの指定。BuildModel）。
+    /// モデルが無い住民はプリミティブの7つの形から選ぶ。
     /// 空いている区画は空き地＋「空き家」の看板。引っ越しで作り直す（村仕様 §5.3、§11）。
     /// 引っ越し準備中（Packing）の住民の家の前には荷物の箱を積む。
     /// </summary>
@@ -62,7 +65,8 @@ namespace Uchujin.World
             float scale = r.Range(0.88f, 1.08f);
             var size = new Vector3(s.x * scale, s.y * r.Range(0.9f, 1.15f), s.z * scale);
             var windows = new List<Renderer>();
-            switch (style)
+            if (BuildModel(root, owner != null ? owner.DesignId : null, s, out var modelSize)) size = modelSize;
+            else switch (style)
             {
                 case Style.Cottage:
                     windows.AddRange(StructureBuilder.BasicBuilding(root, size, wall, roof, true, door));
@@ -141,8 +145,8 @@ namespace Uchujin.World
                     break;
                 }
             }
-            // 系統ごとの小さな特徴
-            if (owner != null && owner.Lineage == AlienLineage.ChibiAnimal)
+            // 系統ごとの小さな特徴（プリミティブの家だけ。モデルの家は形に系統の特徴がある）
+            if (owner != null && owner.Lineage == AlienLineage.ChibiAnimal && root.Find("HouseModel") == null)
             {
                 StructureBuilder.Ball(root, new Vector3(-size.x * 0.28f, size.y + 1.6f, size.z * 0.1f), new Vector3(0.7f, 1f, 0.35f), roof, "Ear");
                 StructureBuilder.Ball(root, new Vector3(size.x * 0.28f, size.y + 1.6f, size.z * 0.1f), new Vector3(0.7f, 1f, 0.35f), roof, "Ear");
@@ -163,6 +167,38 @@ namespace Uchujin.World
             }
             NightLight.Attach(root.gameObject, null, WindowOn, Glass, windows.ToArray());
             return root.gameObject;
+        }
+
+        /// <summary>【仮数値】家のモデルの区画に対する最大の大きさ（区画の幅・奥行きに掛ける。通行不可の範囲 (3.8, 3.3)×2 に合わせる）。</summary>
+        private const float ModelMaxWidth = 1.1f, ModelMaxDepth = 1.1f;
+
+        /// <summary>
+        /// 住民ごとの色の家のモデル（Resources/Art/Houses/house_&lt;系統2桁&gt;_&lt;デザイン4桁&gt;。系統ごとの形を住民の配色で塗ったもの）。
+        /// 等倍で置き（扉の高さ 1.65〜2.4 m。主人公と1.5倍の住民が通れる）、区画からはみ出す家だけ一様に縮める。
+        /// 正面（扉）を区画の正面の線にそろえ、入口のドアマット（区画の正面 +1.6 m）と離れないようにする。
+        /// デザインの無い住民・モデルが無い時は false（従来のプリミティブの家）。確認用の撮影（Editor/VillageArtGallery）でも使う。
+        /// </summary>
+        public static bool BuildModel(Transform root, string design, Vector3 plotSize, out Vector3 size)
+        {
+            size = plotSize;
+            if (string.IsNullOrEmpty(design) || design.Length != 4) return false;
+            var holder = new GameObject("HouseModel").transform;
+            holder.SetParent(root, false);
+            var model = ArtModels.BuildFitted(holder, "Houses/house_" + design.Substring(0, 2) + "_" + design,
+                new Vector3(plotSize.x * ModelMaxWidth, 0f, plotSize.z * ModelMaxDepth));
+            if (model == null)
+            {
+                if (Application.isPlaying) Object.Destroy(holder.gameObject);
+                else Object.DestroyImmediate(holder.gameObject);
+                return false;
+            }
+            var b = ArtModels.LocalBounds(model, root);
+            model.transform.localPosition += new Vector3(-b.center.x, 0f, plotSize.z * 0.5f - b.max.z);
+            b = ArtModels.LocalBounds(model, root);
+            var body = PrimitiveBuilder.Empty("Body", root, Vector3.zero);
+            PrimitiveBuilder.AddBoxCollider(body, b.center, b.size);
+            size = new Vector3(b.size.x, b.size.y, plotSize.z);
+            return true;
         }
 
         private static void Vacant(Transform root, FacilityInfo f, WorldPalette P)
