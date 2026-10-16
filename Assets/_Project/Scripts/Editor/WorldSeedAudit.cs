@@ -75,6 +75,8 @@ namespace Uchujin.EditorTools
             // 生成バージョン3（地域・道中マップの試作）
             public Dictionary<string, int> MapAttempts = new Dictionary<string, int>();
             public float T1Seconds, R2Seconds, R2LakeDiameter, GateAngle;
+            // 道の曲がり方と高低差（マップごと）
+            public Dictionary<string, float[]> MapShape = new Dictionary<string, float[]>();
             public bool MapIndependent = true;
         }
 
@@ -267,6 +269,7 @@ namespace Uchujin.EditorTools
             foreach (var m in g.FieldMaps)
             {
                 res.MapAttempts[m.Id] = m.Attempt;
+                res.MapShape[m.Id] = MeasureShape(m);
                 foreach (var n in m.Notes) res.Notes.Add($"[{m.Id}] {n}");
                 if (m.Id == StarSkeleton.FlowerPath) res.T1Seconds = m.RoadLength() / WorldTuning.RunSpeed;
                 if (m.Id == StarSkeleton.LakeForest && m.Lake != null)
@@ -294,6 +297,68 @@ namespace Uchujin.EditorTools
                 }
             }
             if (g.FieldMaps.Count < 2) res.Notes.Add($"村の外のマップが{g.FieldMaps.Count}枚");
+        }
+
+        /// <summary>
+        /// [0] 本道の長さ ÷ 端から端までの直線距離、[1] 直線からの最大のずれ(m)、[2] 曲がり角（30m で向きが20°以上変わる所）の数、
+        /// [3] 遊べる範囲の最低の高さ、[4] 最高の高さ、[5] 坂25°以上の地面の割合(%)、[6] 坂45°以上（登れない段・崖）の割合(%)、[7] 本道の上の最大の坂(%)
+        /// </summary>
+        private static float[] MeasureShape(FieldMap m)
+        {
+            var r = new float[8];
+            var road = m.Road;
+            float len = m.RoadLength();
+            var a = road[0];
+            var b = road[road.Count - 1];
+            r[0] = len / Mathf.Max(1f, Vector2.Distance(a, b));
+            foreach (var p in road) r[1] = Mathf.Max(r[1], GeoUtil.DistToSegment(p, a, b, out _));
+            int turns = 0;
+            float lastTurnAt = -999f, along = 0f;
+            for (int i = 1; i < road.Count; i++)
+            {
+                along += Vector2.Distance(road[i - 1], road[i]);
+                int j = i;
+                float d = 0f;
+                while (j < road.Count - 1 && d < 30f) { d += Vector2.Distance(road[j], road[j + 1]); j++; }
+                if (d < 30f) break;
+                var d0 = (road[i] - road[i - 1]).normalized;
+                var d1 = (road[j] - road[j - 1]).normalized;
+                if (Vector2.Angle(d0, d1) >= 20f && along - lastTurnAt > 30f)
+                {
+                    turns++;
+                    lastTurnAt = along;
+                }
+            }
+            r[2] = turns;
+            float mn = float.MaxValue, mx = float.MinValue;
+            int n = 0, s25 = 0, s45 = 0;
+            for (int iz = 0; iz < m.NZ; iz++)
+                for (int ix = 0; ix < m.NX; ix++)
+                {
+                    var l = new Vector2(m.XOf(ix), m.ZOf(iz));
+                    if (!m.InsidePlayable(l, 2f)) continue;
+                    float h = m.H[m.Index(ix, iz)];
+                    mn = Mathf.Min(mn, h);
+                    mx = Mathf.Max(mx, h);
+                    float sl = Vector3.Angle(m.Normal(ix, iz), Vector3.up);
+                    n++;
+                    if (sl >= 25f) s25++;
+                    if (sl >= 45f) s45++;
+                }
+            r[3] = mn;
+            r[4] = mx;
+            r[5] = 100f * s25 / Mathf.Max(1, n);
+            r[6] = 100f * s45 / Mathf.Max(1, n);
+            float maxGrade = 0f;
+            for (int i = 1; i < road.Count; i++)
+            {
+                float dist = Vector2.Distance(road[i - 1], road[i]);
+                if (dist < 0.5f) continue;
+                float dh = m.SampleTerrain(road[i].x, road[i].y) - m.SampleTerrain(road[i - 1].x, road[i - 1].y);
+                maxGrade = Mathf.Max(maxGrade, Mathf.Abs(dh) / dist * 100f);
+            }
+            r[7] = maxGrade;
+            return r;
         }
 
         public static string MapFingerprint(FieldMap m)
@@ -667,6 +732,16 @@ namespace Uchujin.EditorTools
                 Stat(md, "R2 湖の森：ゲートから岬の先まで走る秒数", results, r => r.R2Seconds);
                 Stat(md, "R2 湖の森：湖の差し渡し（最も狭い所, m）", results, r => r.R2LakeDiameter);
                 Stat(md, "村のゲートの向きと骨格の方角のずれ（度）", results, r => r.GateAngle);
+                string[] shapeNames = { "本道の長さ÷直線距離", "本道の直線からの最大のずれ(m)", "本道の曲がり角の数", "最低の高さ(m)", "最高の高さ(m)", "坂25°以上の地面(%)", "坂45°以上の地面(%)", "本道の最大の坂(%)" };
+                foreach (var id in results[0].MapShape.Keys)
+                    for (int k = 0; k < shapeNames.Length; k++)
+                    {
+                        int kk = k;
+                        string mid = id;
+                        Stat(md, $"{mid}：{shapeNames[k]}", results, r => r.MapShape.TryGetValue(mid, out var v) ? v[kk] : 0f);
+                    }
+                Stat(md, "t1：高低差(m)", results, r => r.MapShape.TryGetValue("t1", out var v) ? v[4] - v[3] : 0f);
+                Stat(md, "r2：高低差(m)", results, r => r.MapShape.TryGetValue("r2", out var v) ? v[4] - v[3] : 0f);
             }
             md.Append($"\n**問題の合計：{problems}**（0なら合格）\n");
             File.WriteAllText(Path.Combine(OutDir, "report.md"), md.ToString(), new UTF8Encoding(false));
