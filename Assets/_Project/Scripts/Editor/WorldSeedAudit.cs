@@ -78,6 +78,8 @@ namespace Uchujin.EditorTools
             // 道の曲がり方と高低差（マップごと）
             public Dictionary<string, float[]> MapShape = new Dictionary<string, float[]>();
             public bool MapIndependent = true;
+            public float VillageRelief, VillageRoadGrade, VillageCliff, VillageSteepShare, V2RoadGrade = -1f, V2SteepShare = -1f;
+            public string VillageSteepAt;
             /// <summary>村の外のマップ（ID ごと）で住める魚の種類・生息地点のある生き物の種類。</summary>
             public Dictionary<string, int> MapFish = new Dictionary<string, int>();
             public Dictionary<string, int> MapCreatures = new Dictionary<string, int>();
@@ -144,6 +146,32 @@ namespace Uchujin.EditorTools
             }
             if (g.Rivers.Count > 0) res.WaterfallDrop = g.Rivers[0].WaterfallDrop;
             if (g.Version >= 3) AuditFieldMaps(seed, g, res, checkDeterminism);
+            // 村の起伏（陸の高低差・45°以上の斜面の割合）と道の一番急な坂
+            {
+                var F = g.Field;
+                float mn = float.MaxValue, mx = float.MinValue;
+                int n = 0, cliff = 0;
+                for (int iz = 2; iz < F.N - 2; iz++)
+                    for (int ix = 2; ix < F.N - 2; ix++)
+                    {
+                        int i = F.Index(ix, iz);
+                        if (!float.IsNaN(F.WaterY[i]) && F.WaterY[i] > F.H[i]) continue;
+                        float edge = WorldTuning.Half - Mathf.Max(Mathf.Abs(F.XOf(ix)), Mathf.Abs(F.ZOf(iz)));
+                        if (edge < 30f) continue;
+                        n++;
+                        mn = Mathf.Min(mn, F.H[i]);
+                        mx = Mathf.Max(mx, F.H[i]);
+                        if (Vector3.Angle(F.Normal(ix, iz), Vector3.up) >= 45f) cliff++;
+                    }
+                res.VillageRelief = mx - mn;
+                res.VillageCliff = 100f * cliff / Mathf.Max(1, n);
+                VillageRoadSteep(g, out res.VillageRoadGrade, out res.VillageSteepShare, out res.VillageSteepAt);
+                if (checkDeterminism)
+                {
+                    var g2v = WorldGenerator.Generate(seed, 2);
+                    VillageRoadSteep(g2v, out res.V2RoadGrade, out res.V2SteepShare, out _);
+                }
+            }
 
             // 鉱山の地下湖（MiningSystem と同じ釣り場を足す）
             var ctx = new PlanetContext(new PlanetInfo { seed = seed }, true) { Layout = L };
@@ -396,6 +424,44 @@ namespace Uchujin.EditorTools
             }
             r[7] = maxGrade;
             return r;
+        }
+
+        /// <summary>村の道の一番急な坂（4m の区間、%）と、15% を超える道の割合（%）。</summary>
+        private static void VillageRoadSteep(GeneratedWorld g, out float worst, out float share, out string at)
+        {
+            var F = g.Field;
+            worst = 0f;
+            at = "";
+            float total = 0f, steep = 0f;
+            var nodes = g.Layout.Roads.nodes;
+            for (int ei = 0; ei < g.Layout.Roads.edges.Count; ei++)
+            {
+                var e = g.Layout.Roads.edges[ei];
+                var a = nodes[e.x];
+                var b = nodes[e.y];
+                float len = Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
+                for (float s = 0f; s + 4f <= len; s += 2f)
+                {
+                    var pa = Vector3.Lerp(a, b, s / len);
+                    var pb = Vector3.Lerp(a, b, (s + 4f) / len);
+                    float gr = Mathf.Abs(F.SampleGround(pb.x, pb.z) - F.SampleGround(pa.x, pa.z)) / 4f * 100f;
+                    total += 2f;
+                    if (gr > 15f) steep += 2f;
+                    if (gr > worst)
+                    {
+                        worst = gr;
+                        string pad = "";
+                        float pd = float.MaxValue;
+                        foreach (var pi in g.Pads)
+                        {
+                            float sd = pi.SignedDistance(pa.x, pa.z);
+                            if (sd < pd) { pd = sd; pad = pi.Kind + "(" + (pi.FacilityId ?? "") + ")"; }
+                        }
+                        at = $"{pa.x:0},{pa.z:0} 橋{(g.Layout.Roads.bridgeEdges.Contains(ei) ? "上" : "外")}・辺の長さ{len:0}m・ノードの高さ {a.y:0.0}/{b.y:0.0}・地面 {F.SampleGround(pa.x, pa.z):0.0}→{F.SampleGround(pb.x, pb.z):0.0}・近い土台 {pad} {pd:0.0}m・水{(F.IsWater(pa.x, pa.z) || F.IsWater(pb.x, pb.z) ? "あり" : "なし")}";
+                    }
+                }
+            }
+            share = total > 0f ? 100f * steep / total : 0f;
         }
 
         public static string MapFingerprint(FieldMap m)
@@ -833,6 +899,17 @@ namespace Uchujin.EditorTools
             Stat(md, "釣り場の数", results, r => r.Spots);
             Stat(md, "生息地点の数", results, r => r.Habitats);
             Stat(md, "住宅区画の数", results, r => r.Houses);
+            Stat(md, "村：陸の高低差(m。端から30m より内側)", results, r => r.VillageRelief);
+            Stat(md, "村：坂45°以上の地面(%)", results, r => r.VillageCliff);
+            Stat(md, "村：道の一番急な坂(%)", results, r => r.VillageRoadGrade);
+            Stat(md, "村：15% を超える道の割合(%)", results, r => r.VillageSteepShare);
+            var v2 = results.FindAll(x => x.V2RoadGrade >= 0f);
+            if (v2.Count > 0)
+            {
+                Stat(md, $"（比べる）版2の村：道の一番急な坂(%)（{v2.Count}シード）", v2, r => r.V2RoadGrade);
+                Stat(md, "（比べる）版2の村：15% を超える道の割合(%)", v2, r => r.V2SteepShare);
+            }
+            foreach (var r in results) if (r.VillageRoadGrade > 30f) Debug.Log($"[AUDIT] 村の急な坂 seed {r.Seed}：{r.VillageRoadGrade:0}%（{r.VillageSteepAt}）");
             if (results.Count > 0 && results[0].MapAttempts.Count > 0)
             {
                 Stat(md, "T1 花の野道：本道を走って抜ける秒数", results, r => r.T1Seconds);

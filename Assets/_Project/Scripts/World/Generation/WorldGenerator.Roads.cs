@@ -752,11 +752,14 @@ namespace Uchujin.World
             }
             // 道路
             var edges = L.Roads.edges;
+            // 生成バージョン3：段丘の崖をまたぐ道は、道のつながり全体で坂を 10% 以下にならす（道の所だけ削る・盛る）
+            float[] nodeH = V3 ? RelaxRoadHeights(WorldTuning.VillageRoadGrade) : null;
             for (int i = 0; i < edges.Count; i++)
             {
                 if (L.Roads.bridgeEdges.Contains(i)) continue;
                 var seg = W.RoadSegments[i];
-                FlattenRoad(seg.A, seg.B, seg.HalfWidth);
+                if (nodeH != null) FlattenRoad(seg.A, seg.B, seg.HalfWidth, nodeH[edges[i].x], nodeH[edges[i].y]);
+                else FlattenRoad(seg.A, seg.B, seg.HalfWidth);
             }
             // クレーター（村仕様 §9：壊れた宇宙船が残る場所）
             ShapeCrater();
@@ -800,10 +803,60 @@ namespace Uchujin.World
 
         private Vector3 OnGround(Vector3 p) => new Vector3(p.x, F.SampleGround(p.x, p.z), p.z);
 
-        private void FlattenRoad(Vector2 a, Vector2 b, float half)
+        /// <summary>
+        /// 道のノードの高さを決める（生成バージョン3）：地面の高さから始め、辺ごとに坂が grade を超えないよう両端を寄せる（くり返し）。
+        /// 建物・広場の土台、橋のたもとの中のノードは土台の高さに固定する。段丘の崖をまたぐ所は、前後のノードに坂が広がる。
+        /// </summary>
+        private float[] RelaxRoadHeights(float grade)
         {
-            float ha = F.SampleTerrain(a.x, a.y);
-            float hb = F.SampleTerrain(b.x, b.y);
+            var nodes = L.Roads.nodes;
+            var edges = L.Roads.edges;
+            var h = new float[nodes.Count];
+            var pinned = new bool[nodes.Count];
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var p = new Vector2(nodes[i].x, nodes[i].z);
+                h[i] = F.SampleTerrain(p.x, p.y);
+                foreach (var pad in W.Pads)
+                    if (pad.SignedDistance(p.x, p.y) < 0.5f)
+                    {
+                        h[i] = pad.TargetY;
+                        pinned[i] = true;
+                        break;
+                    }
+            }
+            for (int pass = 0; pass < 300; pass++)
+            {
+                bool changed = false;
+                for (int e = 0; e < edges.Count; e++)
+                {
+                    if (L.Roads.bridgeEdges.Contains(e)) continue;
+                    int a = edges[e].x, b = edges[e].y;
+                    if (a < 0 || b < 0 || a >= h.Length || b >= h.Length) continue;
+                    float len = Vector2.Distance(new Vector2(nodes[a].x, nodes[a].z), new Vector2(nodes[b].x, nodes[b].z));
+                    float diff = h[b] - h[a];
+                    float excess = Mathf.Abs(diff) - grade * len;
+                    if (excess <= 0.01f) continue;
+                    float s = Mathf.Sign(diff);
+                    if (pinned[a] && pinned[b]) continue;
+                    if (pinned[a]) h[b] -= s * excess;
+                    else if (pinned[b]) h[a] += s * excess;
+                    else
+                    {
+                        h[a] += s * excess * 0.5f;
+                        h[b] -= s * excess * 0.5f;
+                    }
+                    changed = true;
+                }
+                if (!changed) break;
+            }
+            return h;
+        }
+
+        private void FlattenRoad(Vector2 a, Vector2 b, float half) => FlattenRoad(a, b, half, F.SampleTerrain(a.x, a.y), F.SampleTerrain(b.x, b.y));
+
+        private void FlattenRoad(Vector2 a, Vector2 b, float half, float ha, float hb)
+        {
             float reach = half + WorldTuning.RoadBlend;
             var mn = Vector2.Min(a, b) - Vector2.one * reach;
             var mx = Vector2.Max(a, b) + Vector2.one * reach;
@@ -820,7 +873,8 @@ namespace Uchujin.World
                     if (!float.IsNaN(F.WaterY[idx]) && F.WaterY[idx] > F.H[idx] - 0.2f) continue;
                     float target = Mathf.Lerp(ha, hb, t);
                     float w = d < half + 0.6f ? 1f : 1f - GeoUtil.SmoothStep(half + 0.6f, reach, d);
-                    F.H[idx] = Mathf.Lerp(F.H[idx], target, w * 0.9f);
+                    // 版3：道の上は決めた高さにそろえる（元の地面の高さを残すと、段丘の崖をまたぐ所に段が残る）
+                    F.H[idx] = Mathf.Lerp(F.H[idx], target, V3 ? w : w * 0.9f);
                 }
             }
         }

@@ -32,6 +32,13 @@ namespace Uchujin.World
         public Vector2 QuietCenter;
         public float QuietRadius;
         public float QuietHeight;
+        /// <summary>
+        /// 生成バージョン3：村の段丘（マップ設計 v0.3 §2.3・§5：川沿いの低い段・住宅の段・山側の段）。海岸と平行な段の崖2本。
+        /// 崖の所々にゆるい坂の切れ目がある。距離は海岸線からの内陸距離。
+        /// </summary>
+        public bool HasTerraces;
+        public float[] TerraceD = new float[2], TerraceH = new float[2], TerraceWob = new float[2], TerraceFreq = new float[2], TerracePhase = new float[2], TerracePass = new float[2];
+        public float TerracePassSpacing;
 
         private WorldNoise baseN, coastN, ridgeN, forestN, flowerN, rockN, detailN;
 
@@ -103,7 +110,44 @@ namespace Uchujin.World
                     }
                 }
             }
+            // 生成バージョン3：村の段丘と、一段高い見晴らし台の丘（乱数は版2までの並びの後ろで引く）
+            if (version >= 3)
+            {
+                s.HasTerraces = true;
+                s.TerraceD[0] = r.Range(38f, 52f);
+                s.TerraceD[1] = r.Range(132f, 158f);
+                for (int k = 0; k < 2; k++)
+                {
+                    s.TerraceH[k] = r.Range(4f, 6.5f);
+                    s.TerraceWob[k] = r.Range(6f, 14f);
+                    s.TerraceFreq[k] = r.Range(0.012f, 0.025f);
+                    s.TerracePhase[k] = r.Range(0f, Mathf.PI * 2f);
+                    s.TerracePass[k] = r.Range(0f, 120f);
+                }
+                s.TerracePassSpacing = r.Range(85f, 115f);
+                s.HillHeight = r.Range(14f, 19f);
+            }
             return s;
+        }
+
+        /// <summary>段丘の段の高さの合計（内陸距離 d・海岸に沿った座標 t の所）。</summary>
+        public float TerraceAt(float d, float t)
+        {
+            if (!HasTerraces) return 0f;
+            float h = 0f;
+            for (int k = 0; k < 2; k++)
+            {
+                float dk = TerraceD[k] + Mathf.Sin(t * TerraceFreq[k] + TerracePhase[k]) * TerraceWob[k];
+                float pass = 0f;
+                for (int j = -5; j <= 5; j++)
+                {
+                    float u = (t - (TerracePass[k] + j * TerracePassSpacing)) / 10f;
+                    pass = Mathf.Max(pass, Mathf.Exp(-u * u));
+                }
+                float width = Mathf.Lerp(3.5f, 50f, pass);
+                h += TerraceH[k] * GeoUtil.SmoothStep(dk - width * 0.5f, dk + width * 0.5f, d);
+            }
+            return h;
         }
 
         /// <summary>海岸線からの内陸方向の距離（負なら海）。</summary>
@@ -136,6 +180,7 @@ namespace Uchujin.World
             if (d < -3f) h = Mathf.Max(-6f, (d + 3f) * 0.22f);
             else if (d < 12f) h = 0.25f + d * 0.08f;
             else h = Mathf.Lerp(1.21f, plain, GeoUtil.SmoothStep(12f, 36f, d));
+            if (HasTerraces && d > 0f) h += TerraceAt(d, AlongCoast(x, z));
 
             // 山（鉱山の入口がある）
             float dm = Vector2.Distance(p, MountainCenter) / MountainRadius;

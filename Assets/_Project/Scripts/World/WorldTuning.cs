@@ -48,6 +48,8 @@ namespace Uchujin.World
         public const float FieldRegionMaxSeconds = 26f;
         /// <summary>村のゲートを置く位置（村の中心から、端の手前までの距離。見えない壁の内側）。</summary>
         public const float VillageGateInset = 11f;
+        /// <summary>版3の村の道の坂の上限（段丘の崖をまたぐ所は、道のつながり全体でこれ以下にならす）。</summary>
+        public const float VillageRoadGrade = 0.1f;
         /// <summary>広場から村のゲートまでの道のりの上限（m）。</summary>
         public const float MaxPathPlazaToGate = 300f;
 
